@@ -106,6 +106,8 @@ def process_CWdata(ch1_data, ch2_data, idx, freq, power_df, **kwargs):
     phase_diff = np.angle(cross)
 
     # Add the phases + difference to the dataframe
+    power_df.at[idx, "ch1_phase"] = np.angle(ch1_fft[freq_idx_ch1])
+    power_df.at[idx, "ch2_phase"] = np.angle(ch2_fft[freq_idx_ch2])
     power_df.at[idx, "phase_diff"] = phase_diff
 
     # ----------------------- Gain Calculation -----------------------
@@ -395,5 +397,24 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
     filepaths.append(os.path.join(OUT_DIR, f"CW_Gain_Phase_{date}.png"))
     plt.savefig(filepaths[-1], bbox_inches='tight')
     plt.show()
+
+    # ---------------------- Create Complex Gain CSV ----------------------
+     # Convert gain from dB to linear magnitude
+    s31_linear_mag = 10**(power_df['ch1_gain'] / 20)
+    s46_linear_mag = 10**(power_df['ch2_gain'] / 20)
+
+    # Reconstruct the complex S-parameters using magnitude and phase
+    s31_complex = s31_linear_mag * np.exp(1j * power_df['ch1_phase'])
+    s46_complex = s46_linear_mag * np.exp(1j * power_df['ch2_phase'])
+
+    # Create a new dataframe for the complex gain data
+    complex_gain_df = pd.DataFrame({
+        'Frequency': power_df['Frequency'], # Frequency in GHz
+        'S31': s31_complex,
+        'S46': s46_complex
+    })
+
+    filepaths.append(os.path.join(OUT_DIR, f"CW_Complex_Gain_{date}.csv"))
+    complex_gain_df.to_csv(filepaths[-1], index=False)
 
     return filepaths

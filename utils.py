@@ -3,6 +3,7 @@ import os
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from typing import Annotated
 from typing import Union
@@ -122,7 +123,6 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
 
     return ch1_psd, ch2_psd, csd
 
-
 def dB(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
     Convert a linear value or array to decibels (dB).
@@ -159,3 +159,7 @@ def print_fps(filepaths):
         for fp in filepaths:
             print(fp)
 
+def parse_complex(s):
+    if pd.isna(s) or s == '':
+        return np.nan
+    return complex(s.strip('()'))
