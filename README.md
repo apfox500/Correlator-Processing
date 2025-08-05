@@ -14,7 +14,7 @@ This repository provides tools for processing and analyzing data from the correa
 1. **Clone the repository:**
 
    ```sh
-   git clone <your-repo-url>
+   git clone https://github.com/apfox500/Correlator-Processing.git
    cd "Correlator Processing"
    ```
 
