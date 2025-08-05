@@ -28,7 +28,8 @@ CH2_FILE = "alphabeta/ZPAD-23-S+_CommonP2_20241024 1.s2p"
 
 # DUT
 DUT_FILENAME = "DUT_ZKL2Plus_AttCh1_15dBCh2_25dB_NSamp2097152__Fs10.0GHz_{date}"
-
+GAIN_FILE = "./correlator_testing_output/Processed gain.csv"
+GAIN_HEADERS = ['Freq', 'CW_Ch1', 'CW_Ch2', 'CW_Phase_Diff']
 
 # ---------------------------------------------------------------------------
 # This Section contains constants that shoudn't need to be changed every time

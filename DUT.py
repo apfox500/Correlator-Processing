@@ -9,7 +9,7 @@ from utils import process_noise_data, linear
 
 
 def dut_main(date:str, **kwargs) ->list[str]:
-
+    filepaths = []
     # -------------------- Initialization --------------------
     num_samples_test = kwargs.get("num_samples_test", NUM_SAMPLES_TEST)
     data_file_base = kwargs.get("data_file_base", DUT_FILENAME).format(date=date)
@@ -25,24 +25,25 @@ def dut_main(date:str, **kwargs) ->list[str]:
     # -------------------- Load Gain Data --------------------
     # Load gain data from CSV file
 
-    gain_file = kwargs.get("gain_file", "./correlator_testing_output/Processed gain.csv")
+    gain_file = kwargs.get("gain_file", GAIN_FILE)
     if not os.path.exists(gain_file):
         raise FileNotFoundError(f"Gain file '{gain_file}' does not exist.")
     
-    gain_df = pd.read_csv(gain_file) # headers we care about are: ['Freq','CW_Ch1','CW_Ch2','CW_Phase_Diff']
+    headers = kwargs.get("headers", GAIN_HEADERS)
+    
+    gain_df = pd.read_csv(gain_file) # headers should be something like: ['Freq','CW_Ch1','CW_Ch2','CW_Phase_Diff']
 
     # resample gain_df to match the frequency bins of the PSD data
     fft_freq = fft_freq[(fft_freq >= 1e9) & (fft_freq <= 2e9)]  # Trim to 1-2 GHz
 
     gain_freq = np.linspace(1, 2, 201)  # Assuming gain_df is in GHz
-    gain_ch1 = np.interp(fft_freq / 1e9, gain_freq, gain_df['CW_Ch1'])
-    gain_ch2 = np.interp(fft_freq / 1e9, gain_freq, gain_df['CW_Ch2'])
-    gain_phase_diff = np.interp(fft_freq / 1e9, gain_freq, gain_df['CW_Phase_Diff'])
+    gain_ch1 = np.interp(fft_freq / 1e9, gain_freq, gain_df[headers[1]])
+    gain_ch2 = np.interp(fft_freq / 1e9, gain_freq, gain_df[headers[2]])
+    gain_phase_diff = np.interp(fft_freq / 1e9, gain_freq, gain_df[headers[3]])
 
     # convert gain from dB to linear scale
     gain_ch1_linear = linear(gain_ch1)
     gain_ch2_linear = linear(gain_ch2)
-
 
     # -------------------- NT Calculation --------------------
     # convert to w/Hz
@@ -73,7 +74,8 @@ def dut_main(date:str, **kwargs) ->list[str]:
         'Ch2 NF (dB)': ch2_nf,
         'Phase Difference (rad)': phase_diff,
     })
-    results_df.to_csv(os.path.join(OUT_DIR, f"DUT_NF_Calculation_{date}.csv"), index=False)
+    filepaths.append(os.path.join(OUT_DIR, f"DUT_NF_Calculation_{date}.csv"))
+    results_df.to_csv(filepaths[-1], index=False)
 
     plt.figure(figsize=(10, 5))
     ax1 = plt.gca()
@@ -94,5 +96,8 @@ def dut_main(date:str, **kwargs) ->list[str]:
 
     plt.title("DUT Noise Figure and Phase Difference vs Frequency")
     plt.tight_layout()
-    plt.savefig(os.path.join(OUT_DIR, f"DUT_NF_Calculation_{date}.png"), bbox_inches='tight')
+    filepaths.append(os.path.join(OUT_DIR, f"DUT_NF_{date}.png"))
+    plt.savefig(filepaths[-1], bbox_inches='tight')
     plt.show()
+
+    return filepaths

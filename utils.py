@@ -152,3 +152,10 @@ def linear(value: Union[float, NDArray]) -> Union[float, NDArray]:
         float or np.ndarray: Linear value(s). Returns 0 for elements that are -np.inf.
     """
     return 10 ** (value / 10) if np.all(value > -np.inf) else np.where(value > -np.inf, 10 ** (value / 10), 0)
+
+def print_fps(filepaths):
+    if filepaths is not None:
+        print("Data saved to:")
+        for fp in filepaths:
+            print(fp)
+

@@ -13,6 +13,7 @@ from Constants import *
 from CW import CW_main
 from ND import noise_main
 from DUT import dut_main
+from utils import print_fps
 
 def cli_interface():
     """
@@ -69,10 +70,7 @@ def cli_interface():
 
             filepaths = CW_main(date=date, filename=filename, graph_flag=graph_flag, file_kwargs=file_kwargs)
 
-            if filepaths is not None:
-                print("Data saved to:")
-                for fp in filepaths:
-                    print(fp)
+            print_fps(filepaths)
 
             input("Press Enter to continue...")
         elif choice == "2": # Process Noise Diode Data
@@ -95,12 +93,21 @@ def cli_interface():
                 ch2_file = input("Enter path for CH2_FILE (or press Enter to use default): ").strip() or CH2_FILE
                 file_kwargs["ch2_file"] = ch2_file
 
-            noise_main(date=date, data_file_base=file_base, num_samples_test=num_samples_test, **file_kwargs)
+            filepaths = noise_main(date=date, data_file_base=file_base, num_samples_test=num_samples_test, **file_kwargs)
+
+            print_fps(filepaths)
+            
             input("Press Enter to continue...")
         elif choice == "3": # Process DUT Data
             date = input("Enter date string for DUT data (default: {}): ".format(DATE)).strip() or DATE
             gain_file = input("Enter gain file path (default: ./correlator_testing_output/Processed gain.csv): ").strip() or "./correlator_testing_output/Processed gain.csv"
-            dut_main(date=date, gain_file=gain_file)
+            
+            # Ask for headers for freq, ch 1 gain, ch2 gain, phase diff
+            headers_input = input(f"Enter headers for [frequency, ch1 gain, ch2 gain, phase diff] as comma-separated values (default: {', '.join(GAIN_HEADERS)}): ").strip()
+            gain_headers = [h.strip() for h in headers_input.split(",")] if headers_input else GAIN_HEADERS
+
+            filepaths = dut_main(date=date, gain_file=gain_file, headers=gain_headers)
+            print_fps(filepaths)
             input("Press Enter to continue...")
         elif choice == "4": # Exit
             print("Exiting.")
@@ -119,14 +126,14 @@ if __name__ == "__main__":
     parser.add_argument('--cw-graph', type=int, default=0, help='Graph frequency response flag (0/1/2)')
     # ND flags
     parser.add_argument('--nd', action='store_true', help='Run noise_main (Noise Diode) directly')
-    parser.add_argument('--nd-date', type=str, default=DATE, help='Date string for Noise Diode data')
+    parser.add_argument('--nd-date', type=str, default=ND_DATE, help='Date string for Noise Diode data')
     parser.add_argument('--nd-filename', type=str, default=ND_FILENAME, help='Base filename for Noise Diode data')
     parser.add_argument('--nd-num-samples', type=int, default=500, help='Number of samples to test for Noise Diode')
     parser.add_argument('--nd-ch1-file', type=str, default=CH1_FILE, help='S-parameter file for CH1 (Noise Diode)')
     parser.add_argument('--nd-ch2-file', type=str, default=CH2_FILE, help='S-parameter file for CH2 (Noise Diode)')
     # DUT flags
     parser.add_argument('--dut', action='store_true', help='Run dut_main (DUT) directly')
-    parser.add_argument('--dut-date', type=str, default=DATE, help='Date string for DUT data')
+    parser.add_argument('--dut-date', type=str, default=DUT_DATE, help='Date string for DUT data')
     parser.add_argument('--dut-gain-file', type=str, default="./correlator_testing_output/Processed gain.csv", help='Gain file path for DUT')
     args = parser.parse_args()
 
