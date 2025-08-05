@@ -62,9 +62,3 @@ coverage.xml
 
 # Output and data
 correlator_testing_output/
-*.npy
-*.csv
-*.png
-*.s1p
-*.s2p
-*.txt
