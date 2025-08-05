@@ -30,7 +30,7 @@ This repository provides tools for processing and analyzing data from the correa
    - Or, install requirements manually:
 
    ```sh
-   pip install -r requirements.txt  # if requirements.txt is available
+   pip install -r requirements.txt
    ```
 
 ## How to Run
