@@ -26,10 +26,19 @@ CAL_FILE = "alphabeta/Diode136_X1_cal_data.txt"
 CH1_FILE = "alphabeta/ZPAD-23-S+_CommonP1_20241024 1.s2p"
 CH2_FILE = "alphabeta/ZPAD-23-S+_CommonP2_20241024 1.s2p"
 
+# Load Cal
+LOAD_FILENAME = "LoadCal_AttCh1_10dBCh2_25dB_NSamp2097152__Fs10.0GHz_{date}"
+
 # DUT
 DUT_FILENAME = "DUT_ZKL2Plus_AttCh1_15dBCh2_25dB_NSamp2097152__Fs10.0GHz_{date}"
-GAIN_FILE = "./correlator_testing_output/Processed gain.csv"
-GAIN_HEADERS = ['Freq', 'CW_Ch1', 'CW_Ch2', 'CW_Phase_Diff']
+GAIN_FILE = "./correlator_testing_output/CW_Complex_Gain_25-07-16-16-22-50.csv"
+GAIN_HEADERS = ['Freq', 'S31', 'S46']
+LOAD_FILE = "./correlator_testing_output/LoadCal.csv"
+LOAD_HEADERS = ['Freq', 'Ch1 PSD', 'Ch2 PSD', 'Phase Diff']
+DUT_S_FILE = "alphabeta/DUT1.s2p"
+S11_FILE = "alphabeta/S11_CH1_ATT14dB.s1p"
+S66_FILE = "alphabeta/S66_CH2_ATT26dB - Copy.s1p"
+
 
 # ---------------------------------------------------------------------------
 # This Section contains constants that shoudn't need to be changed every time
