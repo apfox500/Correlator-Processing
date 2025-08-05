@@ -1,0 +1,1 @@
+I want you to make a readme (this is going to be a github repo). The README should have the following: a description of what the code does, instructions on how to set up the environment, and instructions on how to run the code.
