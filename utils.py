@@ -104,7 +104,7 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
     ch1_fft = ch1_fft[mask]
     ch2_fft = ch2_fft[mask]
 
-    csd = ch1_fft * np.conjugate(ch2_fft) # phase
+    csd = ch1_fft * np.conjugate(ch2_fft) # phase diff
 
     # Calculate PSD
     ch1_psd = 2 * np.abs(ch1_fft) ** 2 / (SAMPLE_CUTOFF * FS * 1e9)
@@ -133,6 +133,16 @@ def dB(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
     return 10 * np.log10(value) if np.all(value > 0) else np.where(value > 0, 10 * np.log10(value), -np.inf)
 
+def db(value: Union[float, NDArray]) -> Union[float, NDArray]:
+    """
+    Alias for dB function to maintain compatibility with existing code.
+    Parameters:
+        value (float or np.ndarray): Linear value(s) to convert.
+    Returns:
+        float or np.ndarray: Value(s) in dB.
+    """
+    return dB(value)
+
 def dBm(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
     Convert a linear value or array (in Watts) to decibels-milliwatts (dBm).
@@ -142,6 +152,16 @@ def dBm(value: Union[float, NDArray]) -> Union[float, NDArray]:
         float or np.ndarray: Value(s) in dBm. Returns -np.inf for elements <= 0.
     """
     return 10 * np.log10(value * 1e3) if np.all(value > 0) else np.where(value > 0, 10 * np.log10(value * 1e3), -np.inf)
+
+def dbm(value: Union[float, NDArray]) -> Union[float, NDArray]:
+    """
+    Alias for dBm function to maintain compatibility with existing code.
+    Parameters:
+        value (float or np.ndarray): Linear value(s) in Watts.
+    Returns:
+        float or np.ndarray: Value(s) in dBm.
+    """
+    return dBm(value)
 
 def linear(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
@@ -163,3 +183,21 @@ def parse_complex(s):
     if pd.isna(s) or s == '':
         return np.nan
     return complex(s.strip('()'))
+
+def interp_complex(target:NDArray, source:NDArray, y:NDArray[np.complex128]) -> NDArray[np.complex128]:
+    """
+    Interpolates a complex array y from source to target.
+    Parameters:
+        target (np.ndarray): Target x-coordinates.
+        source (np.ndarray): Source x-coordinates.
+        y (np.ndarray[np.complex128]): Complex values to interpolate.
+    Returns:
+        np.ndarray[np.complex128]: Interpolated complex values at target.
+    """
+    # interpolate phase and magnitude separately
+    phase_interp = np.interp(target, source, np.angle(y))
+    mag_interp = np.interp(target, source, np.abs(y))
+    
+    # combine magnitude and phase into complex numbers
+    return mag_interp * np.exp(1j * phase_interp)
+
