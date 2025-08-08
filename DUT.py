@@ -41,7 +41,7 @@ def load_param_df(param_df, fft_freq, **kwargs):
     load_df = pd.read_csv(load_file, converters={load_headers[1]: parse_complex, load_headers[2]: parse_complex}) # headers should be something like ['Freq', 'Ch1_b', 'Ch2_b', 'Phase']
 
     # resample load_df to match the frequency bins of the PSD data
-    load_freq = np.linspace(1, 2, 3001)
+    load_freq = np.linspace(1, 2, len(load_df)) # flegacy so we need to keep it at 3001
     param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / R_0 # ch1 load PSD in v^2/Hz
     param_df['load_b4'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[2]]) / R_0 # ch2 load PSD
 
@@ -176,21 +176,26 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
     term4 = term4_num / term4_den
 
     xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * BOLTZ * T_AMB
+
+    plt.figure(figsize=(12, 6))
+    freq_ghz = param_df['Freq (GHz)'] if 'Freq (GHz)' in param_df else np.linspace(1, 2, len(term3))
+    plt.plot(freq_ghz, dB(np.abs(term3)), label='|term3|', color=COLORS[0])
+    plt.plot(freq_ghz, dB(np.abs(term4 * BOLTZ * T_AMB)), label='|term4 * BOLTZ * T_AMB|', color=COLORS[1])
+    plt.plot(freq_ghz, dB(np.abs(param_df['dut_b3_b4_conj'])), label='|dut_b3_b4_conj|', color=COLORS[3])
+    plt.plot(freq_ghz, dB(np.abs(xn1_xn2_conj)), label='|xn1_xn2_conj|', color=COLORS[4])
+    plt.xlabel("Frequency (GHz)")
+    plt.ylabel("Magnitude (dB/Hz)")
+    plt.title("term3, term4 * BOLTZ * T_AMB, |dut_b3_b4_conj|, |xn1_xn2_conj| vs Frequency")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
     # xn1_xn2_conj = param_df['dut_b3_b4_conj']
     return xn1_sq, xn2_sq, xn1_xn2_conj
 
 def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[np.complex128], s11, gamma_G = 0) -> pd.DataFrame:
     # Solve for t (noise temp)
     t = x1 + np.abs(1 + s11)**2 *x2 - 2* np.real(np.conj(1+s11) * x12)
-    plt.figure(figsize=(12, 6))
-    plt.plot(np.linspace(1,2, 3001), 2 * dB(np.abs(x2 * s11)), label='2 * dB(|x2 * s11|)', color=COLORS[0])
-    plt.plot(np.linspace(1,2, 3001), 2 * dB(np.abs(x12)), label='|x12|', color=COLORS[1])
-    plt.xlabel("Frequency (GHz)")
-    plt.ylabel("Magnitude")
-    plt.title("2 * dB(|x2 * s11|) and |x12| vs Frequency")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+
     # solve for eta
     eta_num = x2*(1+np.abs(s11)**2)  + x1 - 2 * np.real(np.conj(s11) * x12)
     eta_den = x2*s11 - x12
@@ -218,8 +223,6 @@ def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[
         'Te': Te,
     })
 
-
-
 def dut_main(date:str, **kwargs) ->list[str]:
     filepaths = []
     # -------------------- Initialization --------------------
@@ -242,6 +245,17 @@ def dut_main(date:str, **kwargs) ->list[str]:
         'dut_b4': ch2_avg_psd / R_0,  # Convert to W/Hz
         'dut_b3_b4_conj': csd_avg / R_0  # Convert to W/Hz
     })
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3'])), marker='o', color=COLORS[0], label='|b3|')
+    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b4'])), marker='o', color=COLORS[1], label='|b4|')
+    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3_b4_conj'])), marker='o', color=COLORS[3], label='|b3b4*|')
+    plt.xlabel("Frequency (GHz)")
+    plt.ylabel("Magnitude (dB/Hz)")
+    plt.title("PSD: |b3|, |b4|, |b3b4*| vs Frequency")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
     # -------------------- Load Gain, Load Cal, and S parameter Data --------------------
 

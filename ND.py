@@ -52,8 +52,8 @@ def noise_main(date:str, **kwargs) -> list[str]:
     ND136_df = ND136_df.groupby('Freq (GHz)').mean().reset_index()
     ND136_df['PSD'] = ND136_df['NT'] * BOLTZ
     ND136_df_interpolated = pd.DataFrame({
-        'Freq (GHz)': np.linspace(1, 2, 3001), # How can  make the bins be 5 MHz like the CW
-        'PSD': np.interp(np.linspace(1, 2, 3001), ND136_df['Freq (GHz)'], ND136_df['PSD'])
+        'Freq (GHz)': np.linspace(1, 2, DATASET_LENGTH), # How can  make the bins be 5 MHz like the CW
+        'PSD': np.interp(np.linspace(1, 2, DATASET_LENGTH), ND136_df['Freq (GHz)'], ND136_df['PSD'])
     })
 
     # -------------------- Gain Calculation --------------------
@@ -67,7 +67,7 @@ def noise_main(date:str, **kwargs) -> list[str]:
         ch1_cal_net = rf.Network(kwargs.get("ch1_file", CH1_FILE))
         ch2_cal_net = rf.Network(kwargs.get("ch2_file", CH2_FILE))
         # Interpolate to 1-2 GHz with 2001 steps
-        n_points = 3001
+        n_points = DATASET_LENGTH
         freq_axis_ghz = np.linspace(1, 2, n_points, dtype=float)
 
         # Interpolate magnitude and angle separately, then reconstruct complex S21

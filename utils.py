@@ -14,9 +14,9 @@ from Constants import *
 
 
 def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST, **kwargs) -> tuple[
-    Annotated[NDArray[np.complex128], (3001,)],
-    Annotated[NDArray[np.complex128], (3001,)],
-    Annotated[NDArray[np.complex128], (3001,)]
+    Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
+    Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
+    Annotated[NDArray[np.complex128], (DATASET_LENGTH,)]
 ]:
     """
     Process all noise data files and return average PSD for ch1 and ch2.
@@ -30,7 +30,7 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST
     """
     # -------------------- Initialization --------------------
     fft_freq = kwargs.get("fft_freq", np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9)))
-    power_data = np.zeros((3, 3001), dtype=np.complex128)
+    power_data = np.zeros((3, DATASET_LENGTH), dtype=np.complex128)
     
 
     # -------------------- Process Noise Files --------------------
@@ -103,7 +103,6 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
     mask = (fft_freq >= 1e9) & (fft_freq <= 2e9)
     ch1_fft = ch1_fft[mask]
     ch2_fft = ch2_fft[mask]
-
     
     # Calculate PSD
     ch1_psd = 2 * np.abs(ch1_fft) ** 2 / (SAMPLE_CUTOFF * FS * 1e9)
@@ -111,7 +110,6 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
 
     # Calculate Cross-Spectral Density (CSD)
     csd = 2 * (ch1_fft * np.conjugate(ch2_fft)) / (SAMPLE_CUTOFF * FS * 1e9)
-
 
     if graph_psd:
         plt.figure(figsize=(10, 5))

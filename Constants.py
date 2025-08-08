@@ -1,3 +1,4 @@
+import math
 # Edit files, directories, and dates in thsi sectoin of the file
 
 # Files
@@ -55,7 +56,10 @@ FS = 10.0 # Sampling frequency in GHz
 
 # Constants
 SAMPLE_CUTOFF = 30000
-NUM_SAMPLES_TEST = 30
+MINIMUM_FREQUENCY = 1e9  # 1 GHz
+MAXIMUM_FREQUENCY = 2e9
+DATASET_LENGTH = math.floor(MAXIMUM_FREQUENCY * SAMPLE_CUTOFF / FS / 1e9) - math.ceil(MINIMUM_FREQUENCY * SAMPLE_CUTOFF / FS / 1e9) + 1
+NUM_SAMPLES_TEST = 30 # max 500
 COLORS = ["#223A64","#fa753c", "#ffda49", "#a9d574", "#3ca590", "#626c9d"]
 BOLTZ = 1.380649e-23  # Boltzmann constant in J/K
 T_AMB = 290 # Ambient temperature in K
