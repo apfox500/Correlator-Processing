@@ -44,8 +44,8 @@ def loadcal_main(date:str = LOAD_DATE, **kwargs) -> list[str]:
 
 
     # Convert to dBm/Hz
-    ch1_avg_psd_dbm = dBm(ch1_avg_psd / IMPEDANCE)
-    ch2_avg_psd_dbm = dBm(ch2_avg_psd / IMPEDANCE)
+    ch1_avg_psd_dbm = dBm(ch1_avg_psd / R_0)
+    ch2_avg_psd_dbm = dBm(ch2_avg_psd / R_0)
 
     phase_diff = np.angle(csd_avg)
 

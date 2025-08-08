@@ -21,7 +21,7 @@ def fft_to_dbm(complex_fft_result, n_samples, **kwargs):
   Returns:
     A numpy array of power values in dBm.
   """
-  impedance = kwargs.get("impedance", IMPEDANCE)
+  impedance = kwargs.get("impedance", R_0)
   # get the magnitude from the complex fft result
   fft_magnitude = np.abs(complex_fft_result)
 

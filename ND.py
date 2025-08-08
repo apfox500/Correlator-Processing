@@ -57,8 +57,8 @@ def noise_main(date:str, **kwargs) -> list[str]:
     })
 
     # -------------------- Gain Calculation --------------------
-    ch1_gain = ch1_avg_psd / (IMPEDANCE * ND136_df_interpolated['PSD'].values)
-    ch2_gain = ch2_avg_psd / (IMPEDANCE * ND136_df_interpolated['PSD'].values)
+    ch1_gain = ch1_avg_psd / (R_0 * ND136_df_interpolated['PSD'].values)
+    ch2_gain = ch2_avg_psd / (R_0 * ND136_df_interpolated['PSD'].values)
 
     phase_diff = np.angle(csd_avg)
 

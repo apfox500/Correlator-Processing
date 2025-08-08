@@ -11,6 +11,91 @@ from typing import Tuple
 from Constants import *
 from utils import *
 
+def load_param_df(param_df, fft_freq, **kwargs):
+    # -------------------- Load Gain Data --------------------
+    # Load gain data from CSV file
+
+    gain_file = kwargs.get("gain_file", GAIN_FILE)
+    if not os.path.exists(gain_file):
+        raise FileNotFoundError(f"Gain file '{gain_file}' does not exist.")
+    
+    gain_headers = kwargs.get("gain_headers", GAIN_HEADERS) # should be like [Freq, S31, S46]
+
+    gain_df = pd.read_csv(gain_file, converters={gain_headers[1]: parse_complex, gain_headers[2]: parse_complex})
+
+    s46 = gain_df[gain_headers[2]]
+    s31 = gain_df[gain_headers[1]]
+
+    # Add gain data to param_df
+    param_df['s31'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s31)
+    param_df['s46'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s46)
+    param_df['s46_conj'] = np.conj(param_df['s46'])
+
+
+    # -------------------- Load Load Cal Data --------------------
+    load_file = kwargs.get("load_file", LOAD_FILE)
+    load_headers = kwargs.get("load_headers", LOAD_HEADERS)
+    if not os.path.exists(load_file):
+        raise FileNotFoundError(f"Load file '{load_file}' does not exist.")
+
+    load_df = pd.read_csv(load_file, converters={load_headers[1]: parse_complex, load_headers[2]: parse_complex}) # headers should be something like ['Freq', 'Ch1_b', 'Ch2_b', 'Phase']
+
+    # resample load_df to match the frequency bins of the PSD data
+    load_freq = np.linspace(1, 2, 3001)
+    param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / R_0 # ch1 load PSD in v^2/Hz
+    param_df['load_b4'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[2]]) / R_0 # ch2 load PSD
+
+
+    # -------------------- Load relevant s-parameters --------------------
+    # ---- load DUT s-params ----
+    dut_s_file = kwargs.get("dut_s_file", DUT_S_FILE)
+    if not os.path.exists(dut_s_file):
+        raise FileNotFoundError(f"DUT s-parameter file '{dut_s_file}' does not exist.")
+
+    dut_ntwk = rf.Network(dut_s_file)
+    # Resample DUT network to match PSD frequency bins
+    dut_s11 = dut_ntwk.s[:, 0, 0]
+    dut_s21 = dut_ntwk.s[:, 1, 0]
+    dut_s22 = dut_ntwk.s[:, 1, 1]
+
+
+    # Extract S-parameters
+    param_df['dut_s11'] = interp_complex(fft_freq, dut_ntwk.f, dut_s11)
+    param_df['dut_s21'] = interp_complex(fft_freq, dut_ntwk.f, dut_s21)
+    param_df['dut_s22'] = interp_complex(fft_freq, dut_ntwk.f, dut_s22)
+
+    param_df['dut_s11_conj'] = np.conj(param_df['dut_s11'])
+    param_df['dut_s21_conj'] = np.conj(param_df['dut_s21'])
+    param_df['dut_s22_conj'] = np.conj(param_df['dut_s22'])
+
+    # ---- load s11 and s66 ----
+    s11_file = kwargs.get("s11_file", S11_FILE)
+    s66_file = kwargs.get("s66_file", S66_FILE)
+
+    if not os.path.exists(s11_file):
+        raise FileNotFoundError(f"S11 file '{s11_file}' does not exist.")
+
+    if not os.path.exists(s66_file):
+        raise FileNotFoundError(f"S66 file '{s66_file}' does not exist.")
+    
+    s11_ntwk = rf.Network(s11_file)
+    s66_ntwk = rf.Network(s66_file)
+
+
+    # Extract s11 and s66 from their respective s1p files
+    s11_s = s11_ntwk.s[:, 0, 0]
+    s66_s = s66_ntwk.s[:, 0, 0]
+
+
+    # Store the interpolated values in the DataFrame
+    param_df['s11'] = interp_complex(fft_freq, s11_ntwk.f, s11_s)
+    param_df['s66'] = interp_complex(fft_freq, s66_ntwk.f, s66_s)
+
+    param_df['s11_conj'] = np.conj(param_df['s11'])
+    param_df['s66_conj'] = np.conj(param_df['s66'])
+
+    return param_df
+
 def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray[np.complex128], NDArray[np.complex128]]:
     """
     Calculate X-parameters for the DUT based on the provided S-parameters and PSDs.
@@ -90,31 +175,49 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
     term3 = term3_num / term3_den
     term4 = term4_num / term4_den
 
+    xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * BOLTZ * T_AMB
+    # xn1_xn2_conj = param_df['dut_b3_b4_conj']
+    return xn1_sq, xn2_sq, xn1_xn2_conj
+
+def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[np.complex128], s11, gamma_G = 0) -> pd.DataFrame:
+    # Solve for t (noise temp)
+    t = x1 + np.abs(1 + s11)**2 *x2 - 2* np.real(np.conj(1+s11) * x12)
     plt.figure(figsize=(12, 6))
-    ax = plt.gca()
-
-    # Plot dB of term3_num, term3_den, and term3_num/term3_den
-    # Use COLORS[0] for term3, COLORS[1] for term4, with dotted, dashed, and solid lines
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(term3_num)), label='$|term3_{num}|$', color=COLORS[0], linestyle=':')
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(term3_den)), label='$|term3_{den}|$', color=COLORS[0], linestyle='--')
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(term3)), label='$|term3|$', color=COLORS[0], linestyle='-')
-
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(term4_num)), label='$|term4_{num}|$', color=COLORS[1], linestyle=':')
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(term4_den)), label='$|term4_{den}|$', color=COLORS[1], linestyle='--')
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(term4)), label='$|term4|$', color=COLORS[1], linestyle='-')
-
-    ax.plot(param_df['Freq (GHz)'], dB(np.abs(param_df['dut_b3_b4_conj'])), label='|dut_b3_b4_conj|', color=COLORS[3], linestyle='-')
-
-    ax.set_xlabel('Frequency (GHz)')
-    ax.set_ylabel('Magnitude (dB)')
-    ax.set_title('cross term debugging')
-    ax.legend()
+    plt.plot(np.linspace(1,2, 3001), 2 * dB(np.abs(x2 * s11)), label='2 * dB(|x2 * s11|)', color=COLORS[0])
+    plt.plot(np.linspace(1,2, 3001), 2 * dB(np.abs(x12)), label='|x12|', color=COLORS[1])
+    plt.xlabel("Frequency (GHz)")
+    plt.ylabel("Magnitude")
+    plt.title("2 * dB(|x2 * s11|) and |x12| vs Frequency")
+    plt.legend()
     plt.tight_layout()
     plt.show()
+    # solve for eta
+    eta_num = x2*(1+np.abs(s11)**2)  + x1 - 2 * np.real(np.conj(s11) * x12)
+    eta_den = x2*s11 - x12
+    eta = eta_num / eta_den
 
-    # xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * BOLTZ * T_AMB
-    xn1_xn2_conj = param_df['dut_b3_b4_conj']
-    return xn1_sq, xn2_sq, xn1_xn2_conj
+    # solve for gamma opt (optimal reflection coefficient)
+    gamma_opt = eta / 2 * (1 - (1 - 4 / np.abs(eta)**2) ** 0.5)
+
+    # solve for T min (minimum noise temperature)
+    t_min_num = x2 - np.abs(gamma_opt)**2 * (x1 + np.abs(s11)**2*x2 - 2 * np.real(np.conj(s11) * x12))
+    t_min_den = 1 + np.abs(gamma_opt)**2
+    t_min = t_min_num / t_min_den
+
+    # Solve for Te (effective noise temp)
+    Te_num = np.abs(gamma_opt - gamma_G)**2
+    Te_den = np.abs(1+gamma_opt)**2 * (1 - np.abs(gamma_G)**2)
+    Te = t_min + t *Te_num / Te_den
+
+    return pd.DataFrame({
+        'T_min': t_min,
+        'gamma_opt': gamma_opt,
+        'eta': eta,
+        't': t,
+        'gamma_G': gamma_G,
+        'Te': Te,
+    })
+
 
 
 def dut_main(date:str, **kwargs) ->list[str]:
@@ -135,93 +238,14 @@ def dut_main(date:str, **kwargs) ->list[str]:
 
     param_df = pd.DataFrame({
         'Freq (GHz)': fft_freq / 1e9,
-        'dut_b3': ch1_avg_psd / IMPEDANCE,  # Convert to W/Hz
-        'dut_b4': ch2_avg_psd / IMPEDANCE,  # Convert to W/Hz
-        'dut_b3_b4_conj': csd_avg / IMPEDANCE  # Convert to W/Hz
+        'dut_b3': ch1_avg_psd / R_0,  # Convert to W/Hz
+        'dut_b4': ch2_avg_psd / R_0,  # Convert to W/Hz
+        'dut_b3_b4_conj': csd_avg / R_0  # Convert to W/Hz
     })
 
+    # -------------------- Load Gain, Load Cal, and S parameter Data --------------------
 
-    # -------------------- Load Gain Data --------------------
-    # Load gain data from CSV file
-
-    gain_file = kwargs.get("gain_file", GAIN_FILE)
-    if not os.path.exists(gain_file):
-        raise FileNotFoundError(f"Gain file '{gain_file}' does not exist.")
-    
-    gain_headers = kwargs.get("gain_headers", GAIN_HEADERS) # should be like [Freq, S31, S46]
-
-    gain_df = pd.read_csv(gain_file, converters={gain_headers[1]: parse_complex, gain_headers[2]: parse_complex})
-
-    s46 = gain_df[gain_headers[2]]
-    s31 = gain_df[gain_headers[1]]
-
-    # Add gain data to param_df
-    param_df['s31'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s31)
-    param_df['s46'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s46)
-    param_df['s46_conj'] = np.conj(param_df['s46'])
-
-
-    # -------------------- Load Load Cal Data --------------------
-    load_file = kwargs.get("load_file", LOAD_FILE)
-    load_headers = kwargs.get("load_headers", LOAD_HEADERS)
-    if not os.path.exists(load_file):
-        raise FileNotFoundError(f"Load file '{load_file}' does not exist.")
-
-    load_df = pd.read_csv(load_file, converters={load_headers[1]: parse_complex, load_headers[2]: parse_complex}) # headers should be something like ['Freq', 'Ch1_b', 'Ch2_b', 'Phase']
-
-    # resample load_df to match the frequency bins of the PSD data
-    load_freq = np.linspace(1, 2, 3001)
-    param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / IMPEDANCE # ch1 load PSD in v^2/Hz
-    param_df['load_b4'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[2]]) / IMPEDANCE # ch2 load PSD
-
-
-    # -------------------- Load relevant s-parameters --------------------
-    # ---- load DUT s-params ----
-    dut_s_file = kwargs.get("dut_s_file", DUT_S_FILE)
-    if not os.path.exists(dut_s_file):
-        raise FileNotFoundError(f"DUT s-parameter file '{dut_s_file}' does not exist.")
-
-    dut_ntwk = rf.Network(dut_s_file)
-    # Resample DUT network to match PSD frequency bins
-    dut_s11 = dut_ntwk.s[:, 0, 0]
-    dut_s21 = dut_ntwk.s[:, 1, 0]
-    dut_s22 = dut_ntwk.s[:, 1, 1]
-
-
-    # Extract S-parameters
-    param_df['dut_s11'] = interp_complex(fft_freq, dut_ntwk.f, dut_s11)
-    param_df['dut_s21'] = interp_complex(fft_freq, dut_ntwk.f, dut_s21)
-    param_df['dut_s22'] = interp_complex(fft_freq, dut_ntwk.f, dut_s22)
-
-    param_df['dut_s11_conj'] = np.conj(param_df['dut_s11'])
-    param_df['dut_s21_conj'] = np.conj(param_df['dut_s21'])
-    param_df['dut_s22_conj'] = np.conj(param_df['dut_s22'])
-
-    # ---- load s11 and s66 ----
-    s11_file = kwargs.get("s11_file", S11_FILE)
-    s66_file = kwargs.get("s66_file", S66_FILE)
-
-    if not os.path.exists(s11_file):
-        raise FileNotFoundError(f"S11 file '{s11_file}' does not exist.")
-
-    if not os.path.exists(s66_file):
-        raise FileNotFoundError(f"S66 file '{s66_file}' does not exist.")
-    
-    s11_ntwk = rf.Network(s11_file)
-    s66_ntwk = rf.Network(s66_file)
-
-
-    # Extract s11 and s66 from their respective s1p files
-    s11_s = s11_ntwk.s[:, 0, 0]
-    s66_s = s66_ntwk.s[:, 0, 0]
-
-
-    # Store the interpolated values in the DataFrame
-    param_df['s11'] = interp_complex(fft_freq, s11_ntwk.f, s11_s)
-    param_df['s66'] = interp_complex(fft_freq, s66_ntwk.f, s66_s)
-
-    param_df['s11_conj'] = np.conj(param_df['s11'])
-    param_df['s66_conj'] = np.conj(param_df['s66'])
+    param_df = load_param_df(param_df, fft_freq, **kwargs)
 
 
     # -------------------- Calculate (and plot) X-parameters --------------------
@@ -235,23 +259,39 @@ def dut_main(date:str, **kwargs) ->list[str]:
         ax2 = ax1.twinx()
         ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_sq)), label=r'$|\langle x_{n1}^2\rangle |$', color=COLORS[0])
         ax1.plot(fft_freq / 1e9, dB(np.abs(xn2_sq)), label=r'$|\langle x_{n2}^2\rangle |$', color=COLORS[1])
-        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}|^2\rangle |$', color=COLORS[3])
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3])
         ax1.set_xlabel("Frequency (GHz)")
         ax1.set_ylabel("Magnitude (dB/Hz)")
-        ax1.legend(loc="center left")
+        ax1.legend(loc="best")
         ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
         ax2.set_ylabel("Phase (degrees)")
-        ax2.legend(loc="center right")
+        ax2.legend(loc="best")
         plt.title("X-parameters Magnitude and Phase vs Frequency")
         plt.tight_layout()
-        filepaths.append(f"XParameters_{date}.png")
+        filepaths.append(os.path.join(OUT_DIR, f"XParameters_{date}.png"))
         plt.savefig(filepaths[-1])
         plt.show()
 
     # -------------------- NT Calculation --------------------
     
+    x1 = xn1_sq/BOLTZ
+    x2 = xn2_sq/ np.abs(param_df['dut_s21'])**2 / BOLTZ
+    x12 = xn1_xn2_conj / np.conj(param_df['dut_s21'])
 
+    noise_params= NoiseParameters(x1, x2, x12, param_df['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
 
+    if kwargs.get("graph_te", True):
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, noise_params['Te'], color=COLORS[0], label=r'$T_e$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$T_e$ (K)")
+        plt.title(r"Effective Noise Temperature $T_e$ vs Frequency")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(OUT_DIR, f"Te_vs_Freq_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.show()
+    
     # -------------------- Save results --------------------
     xparams_df = pd.DataFrame({
         'Frequency (GHz)': fft_freq / 1e9,

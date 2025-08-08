@@ -104,11 +104,14 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
     ch1_fft = ch1_fft[mask]
     ch2_fft = ch2_fft[mask]
 
-    csd = ch1_fft * np.conjugate(ch2_fft) # phase diff
-
+    
     # Calculate PSD
     ch1_psd = 2 * np.abs(ch1_fft) ** 2 / (SAMPLE_CUTOFF * FS * 1e9)
     ch2_psd = 2 * np.abs(ch2_fft) ** 2 / (SAMPLE_CUTOFF * FS * 1e9)
+
+    # Calculate Cross-Spectral Density (CSD)
+    csd = 2 * (ch1_fft * np.conjugate(ch2_fft)) / (SAMPLE_CUTOFF * FS * 1e9)
+
 
     if graph_psd:
         plt.figure(figsize=(10, 5))

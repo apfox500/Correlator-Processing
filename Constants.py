@@ -59,4 +59,4 @@ NUM_SAMPLES_TEST = 30
 COLORS = ["#223A64","#fa753c", "#ffda49", "#a9d574", "#3ca590", "#626c9d"]
 BOLTZ = 1.380649e-23  # Boltzmann constant in J/K
 T_AMB = 290 # Ambient temperature in K
-IMPEDANCE = 50  # Ohms
+R_0 = 50  # Ohms
