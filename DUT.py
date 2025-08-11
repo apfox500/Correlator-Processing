@@ -31,18 +31,6 @@ def load_param_df(param_df, fft_freq, **kwargs):
     param_df['s46'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s46)
     param_df['s46_conj'] = np.conj(param_df['s46'])
 
-    # Plot phase of s31 (original) vs s31 (interpolated)
-    plt.figure(figsize=(10, 5))
-    plt.plot(gain_df['Frequency'], np.unwrap(np.angle(s31)), label='s31 (original)', color=COLORS[0])
-    plt.plot(fft_freq / 1e9, np.unwrap(np.angle(param_df['s31'])), label='s31 (interpolated)', color=COLORS[1], linestyle='--')
-    plt.xlabel('Frequency (GHz)')
-    plt.ylabel('Phase (radians)')
-    plt.title('Phase of s31: Original vs Interpolated')
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-
     # -------------------- Load Load Cal Data --------------------
     load_file = kwargs.get("load_file", LOAD_FILE)
     load_headers = kwargs.get("load_headers", LOAD_HEADERS)
@@ -188,33 +176,6 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
 
     xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * BOLTZ * T_AMB
 
-    # Save intermediate terms to CSV as complex numbers
-    debug_df = pd.DataFrame({
-        'one_minus_dut_s11_s11': 1 - param_df['dut_s11'] * param_df['s11'],
-        'one_minus_dut_s22conj_s66conj': 1 - param_df['dut_s22_conj'] * param_df['s66_conj'],
-        'term3_num': term3_num,
-        'term3_den': term3_den,
-        'term4_num': term4_num,
-        'term4_den': term4_den,
-        'term3': term3,
-        'term4': term4,
-        'xn1_xn2_conj': xn1_xn2_conj,
-    })
-    debug_df.to_csv("correlator_testing_output/XParameters_debug.csv", index=False)
-
-    plt.figure(figsize=(12, 6))
-    freq_ghz = param_df['Freq (GHz)'] if 'Freq (GHz)' in param_df else np.linspace(1, 2, len(term3))
-    plt.plot(freq_ghz, dB(np.abs(term3)), label='|term3|', color=COLORS[0])
-    plt.plot(freq_ghz, dB(np.abs(term4 * BOLTZ * T_AMB)), label='|term4 * BOLTZ * T_AMB|', color=COLORS[1])
-    plt.plot(freq_ghz, dB(np.abs(param_df['dut_b3_b4_conj'])), label='|dut_b3_b4_conj|', color=COLORS[3])
-    plt.plot(freq_ghz, dB(np.abs(xn1_xn2_conj)), label='|xn1_xn2_conj|', color=COLORS[4])
-    plt.xlabel("Frequency (GHz)")
-    plt.ylabel("Magnitude (dB/Hz)")
-    plt.title("term3, term4 * BOLTZ * T_AMB, |dut_b3_b4_conj|, |xn1_xn2_conj| vs Frequency")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-    # xn1_xn2_conj = param_df['dut_b3_b4_conj']
     return xn1_sq, xn2_sq, xn1_xn2_conj
 
 def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[np.complex128], s11, gamma_G = 0) -> pd.DataFrame:
@@ -269,21 +230,7 @@ def dut_main(date:str, **kwargs) ->list[str]:
         'dut_b3': ch1_avg_psd / R_0,  # Convert to W/Hz
         'dut_b4': ch2_avg_psd / R_0,  # Convert to W/Hz
         'dut_b3_b4_conj': csd_avg / R_0  # Convert to W/Hz
-    })
-
-    plt.figure(figsize=(12, 6))
-    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3'])), color=COLORS[0], label='|b3|')
-    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b4'])), color=COLORS[1], label='|b4|')
-    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3_b4_conj'])), color=COLORS[3], label='|b3b4*|')
-    plt.xlabel("Frequency (GHz)")
-    plt.ylabel("Magnitude (dB/Hz)")
-    plt.title("PSD: |b3|, |b4|, |b3b4*| vs Frequency")
-    plt.legend()
-    plt.tight_layout()
-    filepaths.append(os.path.join(OUT_DIR, f"PSD_{date}.png"))
-    plt.savefig(filepaths[-1])
-    plt.show()
-    
+    })    
 
     # -------------------- Load Gain, Load Cal, and S parameter Data --------------------
 
@@ -325,7 +272,7 @@ def dut_main(date:str, **kwargs) ->list[str]:
 
     noise_params= NoiseParameters(x1, x2, x12, param_df['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
 
-    if kwargs.get("graph_te", False):
+    if kwargs.get("graph_te", True):
         plt.figure(figsize=(12, 6))
         plt.plot(fft_freq / 1e9, noise_params['Te'], color=COLORS[0], label=r'$T_e$')
         plt.xlabel("Frequency (GHz)")
