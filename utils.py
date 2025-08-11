@@ -20,10 +20,13 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST
 ]:
     """
     Process all noise data files and return average PSD for ch1 and ch2.
+    This function processes data in chunks of SAMPLE_CUTOFF to handle large files.
+
     Parameters:
         data_file_base: The base string for the noise data filepaths (without index and .npy).
         num_samples_test: Number of samples/files to process.
         **kwargs: Additional keyword arguments for processing options.
+
     Returns:
         ch1_avg_psd, ch2_avg_psd: Average PSD arrays for ch1 and ch2 in V^2/Hz.
         csd_avg: Average Cross-Spectral Density (CSD) array.
@@ -31,25 +34,54 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST
     # -------------------- Initialization --------------------
     fft_freq = kwargs.get("fft_freq", np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9)))
     power_data = np.zeros((3, DATASET_LENGTH), dtype=np.complex128)
+    total_chunks_processed = 0
     
 
-    # -------------------- Process Noise Files --------------------
-    for idx in tqdm(range(num_samples_test), desc="Processing Noise Data", unit="file", total=num_samples_test):
+    # -------------------- Process Noise Files and Chunks --------------------
+    # loop over the specified number of files
+    for idx in tqdm(range(num_samples_test), desc="Processing Noise Files", unit="file", total=num_samples_test):
         filename = f"{data_file_base}_{idx}.npy"
-        if not os.path.exists(os.path.join(DATA_DIR, filename)):
+        filepath = os.path.join(DATA_DIR, filename)
+        if not os.path.exists(filepath):
             print(f"File {filename} does not exist in {DATA_DIR}. Skipping...")
             continue
-        data_array = np.load(os.path.join(DATA_DIR, filename))
-        ch1_psd, ch2_psd, csd = process_single_noise_data(data_array, fft_freq)
-        power_data[0, :] += ch1_psd
-        power_data[1, :] += ch2_psd
-        power_data[2, :] += csd
+        
+        data_array = np.load(filepath)
+        
+        # determine the number of full chunks in the data file
+        num_chunks = data_array.shape[1] // SAMPLE_CUTOFF
+        if num_chunks == 0:
+            print(f"Warning: {filename} is smaller than a single chunk ({SAMPLE_CUTOFF} samples) and will be skipped.")
+            continue
 
+        # process the file in chunks
+        for i in range(num_chunks):
+            start_idx = i * SAMPLE_CUTOFF
+            end_idx = start_idx + SAMPLE_CUTOFF
+            data_chunk = data_array[:, start_idx:end_idx]
+            
+            # process a single chunk of data (no change needed to this function)
+            ch1_psd, ch2_psd, csd = process_single_noise_data(data_chunk, fft_freq)
+
+            # accumulate power data
+            power_data[0, :] += ch1_psd
+            power_data[1, :] += ch2_psd
+            power_data[2, :] += csd
+        
+        total_chunks_processed += num_chunks
 
     # -------------------- Calculate Average PSD --------------------
-    ch1_avg_psd = power_data[0, :] / num_samples_test
-    ch2_avg_psd = power_data[1, :] / num_samples_test
-    csd_avg = power_data[2, :] / num_samples_test
+    if total_chunks_processed == 0:
+        print("Warning: No data chunks were processed. Returning zero arrays.")
+        # handle case where no data was processed to avoid division by zero
+        return (np.zeros(DATASET_LENGTH, dtype=np.complex128),
+                np.zeros(DATASET_LENGTH, dtype=np.complex128),
+                np.zeros(DATASET_LENGTH, dtype=np.complex128))
+
+    # average by the total number of chunks processed
+    ch1_avg_psd = power_data[0, :] / total_chunks_processed
+    ch2_avg_psd = power_data[1, :] / total_chunks_processed
+    csd_avg = power_data[2, :] / total_chunks_processed
 
     return ch1_avg_psd, ch2_avg_psd, csd_avg
 
@@ -196,7 +228,7 @@ def interp_complex(target:NDArray, source:NDArray, y:NDArray[np.complex128]) -> 
         np.ndarray[np.complex128]: Interpolated complex values at target.
     """
     # interpolate phase and magnitude separately
-    phase_interp = np.interp(target, source, np.angle(y))
+    phase_interp = np.interp(target, source, np.unwrap(np.angle(y)))
     mag_interp = np.interp(target, source, np.abs(y))
     
     # combine magnitude and phase into complex numbers

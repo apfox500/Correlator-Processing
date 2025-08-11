@@ -119,13 +119,13 @@ def noise_main(date:str, **kwargs) -> list[str]:
     ax1.plot(ND136_df_interpolated['Freq (GHz)'], ch2_gain, label='Ch2 Average Gain', color=COLORS[3])
     ax1.set_xlabel("Frequency (GHz)")
     ax1.set_ylabel("Gain (dB)")
-    ax1.legend(loc="middle left")
+    ax1.legend(loc="center left")
 
     # Plot phase difference (convert to degrees)
     phase_diff_deg = np.degrees(np.unwrap(phase_diff))
     ax2.plot(ND136_df_interpolated['Freq (GHz)'], phase_diff_deg, label='Phase Difference', color=COLORS[2])
     ax2.set_ylabel("Phase Difference (degrees)")
-    ax2.legend(loc="middle right")
+    ax2.legend(loc="center right")
 
     plt.title("Average Gain and Phase Difference")
     plt.tight_layout()

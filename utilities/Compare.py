@@ -7,7 +7,7 @@ import numpy as np
 # Use a raw string (r"...") or forward slashes for paths to avoid issues with backslashes.
 # Please update FILE2_PATH to the path of the second CSV file you want to compare.
 FILE1_PATH = 'correlator_testing_output/Processed_Pwr_vs_f_PSplitterNominalCWs-30dBm_Att20dB_25-07-16-16-22-50.csv'
-FILE2_PATH = 'correlator_testing_output/Calculated_Gain_from_ND136_25-07-16-09-12-45.csv'
+FILE2_PATH = 'correlator_testing_output/ND_Gain_25-07-16-09-12-45.csv'
 
 # Headers to be read from the CSV files
 FILE1_HEADERS = ['Frequency', 'ch1_gain', 'ch2_gain', 'phase_diff']
