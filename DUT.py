@@ -31,6 +31,17 @@ def load_param_df(param_df, fft_freq, **kwargs):
     param_df['s46'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s46)
     param_df['s46_conj'] = np.conj(param_df['s46'])
 
+    # Plot phase of s31 (original) vs s31 (interpolated)
+    plt.figure(figsize=(10, 5))
+    plt.plot(gain_df['Frequency'], np.unwrap(np.angle(s31)), label='s31 (original)', color=COLORS[0])
+    plt.plot(fft_freq / 1e9, np.unwrap(np.angle(param_df['s31'])), label='s31 (interpolated)', color=COLORS[1], linestyle='--')
+    plt.xlabel('Frequency (GHz)')
+    plt.ylabel('Phase (radians)')
+    plt.title('Phase of s31: Original vs Interpolated')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 
     # -------------------- Load Load Cal Data --------------------
     load_file = kwargs.get("load_file", LOAD_FILE)
@@ -177,6 +188,20 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
 
     xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * BOLTZ * T_AMB
 
+    # Save intermediate terms to CSV as complex numbers
+    debug_df = pd.DataFrame({
+        'one_minus_dut_s11_s11': 1 - param_df['dut_s11'] * param_df['s11'],
+        'one_minus_dut_s22conj_s66conj': 1 - param_df['dut_s22_conj'] * param_df['s66_conj'],
+        'term3_num': term3_num,
+        'term3_den': term3_den,
+        'term4_num': term4_num,
+        'term4_den': term4_den,
+        'term3': term3,
+        'term4': term4,
+        'xn1_xn2_conj': xn1_xn2_conj,
+    })
+    debug_df.to_csv("correlator_testing_output/XParameters_debug.csv", index=False)
+
     plt.figure(figsize=(12, 6))
     freq_ghz = param_df['Freq (GHz)'] if 'Freq (GHz)' in param_df else np.linspace(1, 2, len(term3))
     plt.plot(freq_ghz, dB(np.abs(term3)), label='|term3|', color=COLORS[0])
@@ -247,15 +272,18 @@ def dut_main(date:str, **kwargs) ->list[str]:
     })
 
     plt.figure(figsize=(12, 6))
-    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3'])), marker='o', color=COLORS[0], label='|b3|')
-    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b4'])), marker='o', color=COLORS[1], label='|b4|')
-    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3_b4_conj'])), marker='o', color=COLORS[3], label='|b3b4*|')
+    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3'])), color=COLORS[0], label='|b3|')
+    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b4'])), color=COLORS[1], label='|b4|')
+    plt.plot(fft_freq / 1e9, dB(np.abs(param_df['dut_b3_b4_conj'])), color=COLORS[3], label='|b3b4*|')
     plt.xlabel("Frequency (GHz)")
     plt.ylabel("Magnitude (dB/Hz)")
     plt.title("PSD: |b3|, |b4|, |b3b4*| vs Frequency")
     plt.legend()
     plt.tight_layout()
+    filepaths.append(os.path.join(OUT_DIR, f"PSD_{date}.png"))
+    plt.savefig(filepaths[-1])
     plt.show()
+    
 
     # -------------------- Load Gain, Load Cal, and S parameter Data --------------------
 
@@ -276,10 +304,13 @@ def dut_main(date:str, **kwargs) ->list[str]:
         ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3])
         ax1.set_xlabel("Frequency (GHz)")
         ax1.set_ylabel("Magnitude (dB/Hz)")
-        ax1.legend(loc="best")
-        ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
+        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(xn1_xn2_conj))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
         ax2.set_ylabel("Phase (degrees)")
-        ax2.legend(loc="best")
+        
+        # Combine legends from both axes
+        handles1, labels1 = ax1.get_legend_handles_labels()
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
         plt.title("X-parameters Magnitude and Phase vs Frequency")
         plt.tight_layout()
         filepaths.append(os.path.join(OUT_DIR, f"XParameters_{date}.png"))
@@ -294,7 +325,7 @@ def dut_main(date:str, **kwargs) ->list[str]:
 
     noise_params= NoiseParameters(x1, x2, x12, param_df['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
 
-    if kwargs.get("graph_te", True):
+    if kwargs.get("graph_te", False):
         plt.figure(figsize=(12, 6))
         plt.plot(fft_freq / 1e9, noise_params['Te'], color=COLORS[0], label=r'$T_e$')
         plt.xlabel("Frequency (GHz)")
