@@ -62,3 +62,5 @@ coverage.xml
 
 # Output and data
 correlator_testing_output/
+temp
+**/temp
