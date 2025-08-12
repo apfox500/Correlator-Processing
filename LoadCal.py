@@ -118,15 +118,19 @@ def loadcal_main(date:str = LOAD_DATE, **kwargs) -> list[str]:
         plt.show()
 
     # -------------------- Save data to csv --------------------
+    # Convert gain-adjusted PSDs back to linear units (W/Hz)
+    ch1_psd_gain_adj_linear = 10**(ch1_psd_gain_adj / 10) * 1e-3  # Convert dBm/Hz to W/Hz
+    ch2_psd_gain_adj_linear = 10**(ch2_psd_gain_adj / 10) * 1e-3  # Convert dBm/Hz to W/Hz
+    
     results_df = pd.DataFrame({
         'Freq': fft_freq / 1e9,
         'Ch1 PSD': ch1_avg_psd,
         'Ch2 PSD': ch2_avg_psd,
-        "Ch1 PSD (gain adjusted)": ch1_psd_gain_adj,
-        "Ch2 PSD (gain adjusted)": ch2_psd_gain_adj,
+        "Ch1 PSD (gain adjusted)": ch1_psd_gain_adj_linear,
+        "Ch2 PSD (gain adjusted)": ch2_psd_gain_adj_linear,
         'Phase Diff': phase_diff,
     })
-    filepaths.append(LOAD_FILE)
+    filepaths.append(os.path.join(OUT_DIR, f"LoadCal_{date}.csv"))
     results_df.to_csv(filepaths[-1], index=False)
 
     return filepaths

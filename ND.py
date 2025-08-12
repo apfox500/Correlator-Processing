@@ -50,7 +50,7 @@ def noise_main(date:str, **kwargs) -> list[str]:
     # -------------------- Noise Diode Calibration Data --------------------
     ND136_df = pd.read_csv(kwargs.get("cal_file", CAL_FILE), comment='#', header=None, names=['Freq (GHz)', 'NT', 'U_NT', 'ENR'])
     ND136_df = ND136_df.groupby('Freq (GHz)').mean().reset_index()
-    ND136_df['PSD'] = ND136_df['NT'] * BOLTZ
+    ND136_df['PSD'] = ND136_df['NT'] * KB
     ND136_df_interpolated = pd.DataFrame({
         'Freq (GHz)': np.linspace(1, 2, DATASET_LENGTH), # How can  make the bins be 5 MHz like the CW
         'PSD': np.interp(np.linspace(1, 2, DATASET_LENGTH), ND136_df['Freq (GHz)'], ND136_df['PSD'])

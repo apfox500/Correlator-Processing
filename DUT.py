@@ -40,8 +40,8 @@ def load_param_df(param_df, fft_freq, **kwargs):
     load_df = pd.read_csv(load_file, converters={load_headers[1]: parse_complex, load_headers[2]: parse_complex}) # headers should be something like ['Freq', 'Ch1_b', 'Ch2_b', 'Phase']
 
     # resample load_df to match the frequency bins of the PSD data
-    load_freq = np.linspace(1, 2, len(load_df)) # flegacy so we need to keep it at 3001
-    param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / R_0 # ch1 load PSD in v^2/Hz
+    load_freq = np.linspace(1, 2, len(load_df)) 
+    param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / R_0 # ch1 load PSD in W/Hz
     param_df['load_b4'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[2]]) / R_0 # ch2 load PSD
 
 
@@ -151,17 +151,17 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
     # calculate <|xn1|^2>
     term1_num = np.abs(1 - param_df['dut_s11'] * param_df['s11'])**2
     term1_den = np.abs(param_df['s31'])**2
-    b3_diff = np.abs(param_df['dut_b3'])**2 - np.abs(param_df['load_b3'])**2
+    b3_diff = np.abs(param_df['dut_b3']) - np.abs(param_df['load_b3'])
     
-    xn1_sq = (term1_num / term1_den) * b3_diff + (term1_num - np.abs(param_df['dut_s11'])**2) * BOLTZ * T_AMB
+    xn1_sq = (term1_num / term1_den) * b3_diff + (term1_num - np.abs(param_df['dut_s11'])**2) * KB * T_AMB
 
     # calculate <|xn2|^2>
     term2_num = np.abs(1 - param_df['dut_s22'] * param_df['s66'])**2
     term2_den = np.abs(param_df['s46'])**2
-    b4_diff = np.abs(param_df['dut_b4'])**2 - np.abs(param_df['load_b4'])**2
+    b4_diff = np.abs(param_df['dut_b4']) - np.abs(param_df['load_b4'])
     s21_term = np.abs(param_df['dut_s21'])**2 / np.abs(1 - param_df['dut_s11'] * param_df['s11'])**2
 
-    xn2_sq = (term2_num / term2_den) * b4_diff + (term2_num - np.abs(param_df['dut_s22'])**2 - s21_term) * BOLTZ * T_AMB
+    xn2_sq = (term2_num / term2_den) * b4_diff + (term2_num - np.abs(param_df['dut_s22'])**2 - s21_term) * KB * T_AMB
 
     # calculate <xn1*xn2_conj>
     term3_num = (1 - param_df['dut_s11'] * param_df['s11']) * (1 - param_df['dut_s22_conj'] * param_df['s66_conj'])
@@ -174,21 +174,22 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
     term3 = term3_num / term3_den
     term4 = term4_num / term4_den
 
-    xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * BOLTZ * T_AMB
+    xn1_xn2_conj = term3 * param_df['dut_b3_b4_conj'] - term4 * KB * T_AMB
 
     return xn1_sq, xn2_sq, xn1_xn2_conj
 
 def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[np.complex128], s11, gamma_G = 0) -> pd.DataFrame:
     # Solve for t (noise temp)
-    t = x1 + np.abs(1 + s11)**2 *x2 - 2* np.real(np.conj(1+s11) * x12)
+    t = x1 + (np.abs(1 + s11)**2) * x2 - 2 * np.real(np.conj(1+s11) * x12)
 
     # solve for eta
     eta_num = x2*(1+np.abs(s11)**2)  + x1 - 2 * np.real(np.conj(s11) * x12)
     eta_den = x2*s11 - x12
     eta = eta_num / eta_den
-
+    
     # solve for gamma opt (optimal reflection coefficient)
-    gamma_opt = eta / 2 * (1 - (1 - 4 / np.abs(eta)**2) ** 0.5)
+    radical = 1 - 4 / np.abs(eta)**2
+    gamma_opt = eta / 2 * (1-np.sqrt(radical))
 
     # solve for T min (minimum noise temperature)
     t_min_num = x2 - np.abs(gamma_opt)**2 * (x1 + np.abs(s11)**2*x2 - 2 * np.real(np.conj(s11) * x12))
@@ -236,7 +237,6 @@ def dut_main(date:str, **kwargs) ->list[str]:
 
     param_df = load_param_df(param_df, fft_freq, **kwargs)
 
-
     # -------------------- Calculate (and plot) X-parameters --------------------
 
     xn1_sq, xn2_sq, xn1_xn2_conj = XParameters(param_df)
@@ -265,31 +265,115 @@ def dut_main(date:str, **kwargs) ->list[str]:
         plt.show()
 
     # -------------------- NT Calculation --------------------
-    
-    x1 = xn1_sq/BOLTZ
-    x2 = xn2_sq/ np.abs(param_df['dut_s21'])**2 / BOLTZ
-    x12 = xn1_xn2_conj / np.conj(param_df['dut_s21'])
+    # convert to Kelvin
+    x1 = xn1_sq / KB
+    x2 = xn2_sq / np.abs(param_df['dut_s21'])**2 / KB
+    x12 = xn1_xn2_conj / np.conj(param_df['dut_s21'])  / KB
 
     noise_params= NoiseParameters(x1, x2, x12, param_df['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
+    
+    if kwargs.get("graph_eta", True):
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, np.abs(noise_params['eta']), color=COLORS[0], label=r'$|\eta|$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$|\eta|$")
+        plt.title(r"$|\eta|$ vs Frequency")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(OUT_DIR, f"Eta_vs_Freq_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.show()
+    
+    # calculate Rn (real impedance)
+    Rn = noise_params['t']/(4*296.15)*R_0 # real impedance in Ohms
+    
+    if kwargs.get("graph_rn", True):
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, Rn, color=COLORS[0], label=r'$R_n$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$R_n$ (Ohms)")
+        plt.title(r"$R_n$ vs Frequency")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(OUT_DIR, f"Rn_vs_Freq_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.show()
+
+    if kwargs.get("graph_gamma_opt", True):
+        # graph phase and magnitude of gamma_opt
+        plt.figure(figsize=(12, 6))
+        ax1 = plt.gca()
+        ax2 = ax1.twinx()
+        ax1.plot(fft_freq / 1e9, dB(np.abs(noise_params['gamma_opt'])), color=COLORS[0], label=r'$|\Gamma_{opt}|$')
+        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(noise_params['gamma_opt']))), color=COLORS[1], label=r'$\angle \Gamma_{opt}$')
+        ax1.set_xlabel("Frequency (GHz)")
+        ax1.set_ylabel(r"$|\Gamma_{opt} (dB ?)|$")
+        ax2.set_ylabel(r"$\angle \Gamma_{opt}$ (degrees)")
+        plt.title(r"$\Gamma_{opt}$ vs Frequency")
+        # Combine legends from both axes
+        handles1, labels1 = ax1.get_legend_handles_labels()
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
+        plt.tight_layout()
+        filepaths.append(os.path.join(OUT_DIR, f"GammaOpt_vs_Freq_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.show()
+    
+    if kwargs.get("graph_t_min", True):
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, noise_params['T_min'], color=COLORS[0], label=r'$T_{min}$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$T_{min}$ (K)")
+        plt.title(r"$T_{min}$ vs Frequency")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(OUT_DIR, f"Tmin_vs_Freq_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.show()
 
     if kwargs.get("graph_te", True):
         plt.figure(figsize=(12, 6))
         plt.plot(fft_freq / 1e9, noise_params['Te'], color=COLORS[0], label=r'$T_e$')
         plt.xlabel("Frequency (GHz)")
         plt.ylabel(r"$T_e$ (K)")
-        plt.title(r"Effective Noise Temperature $T_e$ vs Frequency")
+        plt.title(r"$T_e$ vs Frequency")
         plt.legend()
         plt.tight_layout()
         filepaths.append(os.path.join(OUT_DIR, f"Te_vs_Freq_{date}.png"))
         plt.savefig(filepaths[-1])
         plt.show()
     
+    # -------------------- Calculate and plot Noise Figure --------------------
+    # Calculate noise figure
+
+    nf = 10 * np.log10((T_AMB + noise_params['Te']) / T_AMB)
+
+    if kwargs.get("graph_nf", True):
+        #plot noise figure
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, nf, color=COLORS[0], label=r'$NF$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$NF$ (dB)")
+        plt.title(r"$NF$ vs Frequency")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(OUT_DIR, f"NF_vs_Freq_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.show()
     # -------------------- Save results --------------------
     xparams_df = pd.DataFrame({
         'Frequency (GHz)': fft_freq / 1e9,
         'xn1_sq': xn1_sq,
         'xn2_sq': xn2_sq,
         'xn1_xn2_conj': xn1_xn2_conj,
+        'Te': noise_params['Te'],
+        'T_min': noise_params['T_min'],
+        'gamma_opt': noise_params['gamma_opt'],
+        'gamma_G': noise_params['gamma_G'],
+        't': noise_params['t'],
+        'Rn': Rn,
+        'NF': nf,
+
     })
     filepaths.append(f"Processed_DUT_{date}.csv")
     xparams_df.to_csv(filepaths[-1], index=False)
