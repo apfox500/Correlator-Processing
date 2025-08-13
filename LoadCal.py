@@ -27,7 +27,7 @@ def loadcal_main(date:str = LOAD_DATE, **kwargs) -> list[str]:
     """
     filepaths = []
     # -------------------- Initialization --------------------
-    num_samples_test = kwargs.get("num_samples_test", NUM_SAMPLES_TEST)
+    num_samples_test = kwargs.get("num_samples_test", NUM_TRACES)
     if num_samples_test <= 0:
         raise ValueError("num_samples_test must be a positive integer.")
     data_file_base = kwargs.get("data_file_base", LOAD_FILENAME).format(date=date)

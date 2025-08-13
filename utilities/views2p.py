@@ -55,7 +55,7 @@ def plot_s_parameters(filepath):
 
 if __name__ == '__main__':
 
-    touchstone_filepath = '/Users/apf1/Downloads/ZPAD-23-S+_CommonP1_20241024.s2p'
+    touchstone_filepath = 'alphabeta/DUT1.s2p'
 
     # Create a dummy s2p file for demonstration if it doesn't exist
     try:

@@ -109,7 +109,7 @@ def DUT_cli():
     load_headers_input = input(f"Enter headers for [frequency, ch1 noise, ch2 noise, phase] as comma-separated values (default: {', '.join(LOAD_HEADERS)}): ").strip()
     load_headers = [h.strip() for h in load_headers_input.split(",")] if load_headers_input else LOAD_HEADERS
 
-    num_samples_test = int(input("Enter number of samples to test (default: {}): ".format(NUM_SAMPLES_TEST)).strip() or f'{NUM_SAMPLES_TEST}')
+    num_samples_test = int(input("Enter number of samples to test (default: {}): ".format(NUM_TRACES)).strip() or f'{NUM_TRACES}')
 
 
     filepaths = dut_main(

@@ -35,7 +35,7 @@ LOAD_FILENAME = "LoadCal_AttCh1_15dBCh2_25dB_NSamp2097152__Fs10.0GHz_{date}"
 DUT_FILENAME = "DUT_ZKL2Plus_AttCh1_15dBCh2_25dB_NSamp2097152__Fs10.0GHz_{date}"
 GAIN_FILE = "./correlator_testing_output/CW_Complex_Gain_25-07-16-16-22-50.csv"
 GAIN_HEADERS = ['Freq', 'S31', 'S46']
-LOAD_FILE = "./correlator_testing_output/LoadCal.csv"
+LOAD_FILE = "./correlator_testing_output/LoadCal_25-07-16-09-25-10.csv"
 
 LOAD_HEADERS = ['Freq', 'Ch1 PSD', 'Ch2 PSD', 'Phase Diff']
 DUT_S_FILE = "alphabeta/DUT1.s2p"
@@ -55,11 +55,11 @@ VOLT_PER_TICK = VOLTAGE_RANGE / (2**ADC_RESOLUTION - 1)
 FS = 10.0 # Sampling frequency in GHz
 
 # Constants
-SAMPLE_CUTOFF = 10e3
+SAMPLE_CUTOFF = 30000
 MINIMUM_FREQUENCY = 1e9  # 1 GHz
 MAXIMUM_FREQUENCY = 2e9
 DATASET_LENGTH = math.floor(MAXIMUM_FREQUENCY * SAMPLE_CUTOFF / FS / 1e9) - math.ceil(MINIMUM_FREQUENCY * SAMPLE_CUTOFF / FS / 1e9) + 1
-NUM_SAMPLES_TEST = 30 # max 500
+NUM_TRACES = 30 # max 500
 COLORS = ["#223A64","#fa753c", "#ffda49", "#a9d574", "#3ca590", "#626c9d"]
 KB = 1.380649e-23  # Boltzmann constant in J/K
 T_AMB = 290 # Ambient temperature in K

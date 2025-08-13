@@ -40,7 +40,8 @@ def load_param_df(param_df, fft_freq, **kwargs):
     load_df = pd.read_csv(load_file, converters={load_headers[1]: parse_complex, load_headers[2]: parse_complex}) # headers should be something like ['Freq', 'Ch1_b', 'Ch2_b', 'Phase']
 
     # resample load_df to match the frequency bins of the PSD data
-    load_freq = np.linspace(1, 2, len(load_df)) 
+    load_freq = load_df[load_headers[0]]  # Frequency column in GHz
+
     param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / R_0 # ch1 load PSD in W/Hz
     param_df['load_b4'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[2]]) / R_0 # ch2 load PSD
 
@@ -167,6 +168,8 @@ def XParameters(param_df: pd.DataFrame) -> tuple[NDArray[np.complex128], NDArray
     term3_num = (1 - param_df['dut_s11'] * param_df['s11']) * (1 - param_df['dut_s22_conj'] * param_df['s66_conj'])
     term3_den = param_df['s31'] * param_df['s46_conj']
 
+
+
     term4_num = param_df['dut_s11'] * param_df['dut_s21_conj']
     term4_den = 1 - param_df['dut_s11_conj'] * param_df['s11_conj']
 
@@ -213,7 +216,7 @@ def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[
 def dut_main(date:str, **kwargs) ->list[str]:
     filepaths = []
     # -------------------- Initialization --------------------
-    num_samples_test = kwargs.get("num_samples_test", NUM_SAMPLES_TEST)
+    num_samples_test = kwargs.get("num_samples_test", NUM_TRACES)
     data_file_base = kwargs.get("data_file_base", DUT_FILENAME).format(date=date)
     fft_freq = np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9))
 
@@ -251,7 +254,7 @@ def dut_main(date:str, **kwargs) ->list[str]:
         ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3])
         ax1.set_xlabel("Frequency (GHz)")
         ax1.set_ylabel("Magnitude (dB/Hz)")
-        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(xn1_xn2_conj))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
+        ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
         ax2.set_ylabel("Phase (degrees)")
         
         # Combine legends from both axes
@@ -352,6 +355,7 @@ def dut_main(date:str, **kwargs) ->list[str]:
         #plot noise figure
         plt.figure(figsize=(12, 6))
         plt.plot(fft_freq / 1e9, nf, color=COLORS[0], label=r'$NF$')
+        # plt.plot(np.linspace(1,2,201), rms_resample(fft_freq / 1e9, np.linspace(1,2,201), nf), color=COLORS[1], label=r'$NF_{resampled}$')
         plt.xlabel("Frequency (GHz)")
         plt.ylabel(r"$NF$ (dB)")
         plt.title(r"$NF$ vs Frequency")
@@ -360,6 +364,7 @@ def dut_main(date:str, **kwargs) ->list[str]:
         filepaths.append(os.path.join(OUT_DIR, f"NF_vs_Freq_{date}.png"))
         plt.savefig(filepaths[-1])
         plt.show()
+        
     # -------------------- Save results --------------------
     xparams_df = pd.DataFrame({
         'Frequency (GHz)': fft_freq / 1e9,
