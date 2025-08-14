@@ -242,11 +242,11 @@ def loadcal_main(date: str = LOAD_DATE, **kwargs) -> list[str]:
     # subtract gains from PSDs to get gain-adjusted values
     cw_ch1_psd_gain_adj = ch1_avg_psd_dbm - cw_ch1_gain
     cw_ch2_psd_gain_adj = ch2_avg_psd_dbm - cw_ch2_gain
-    cw_phase_diff = phase_diff - cw_gain_phase_diff
+    cw_phase_diff = np.real(phase_diff - cw_gain_phase_diff)  # ensure real-valued
 
     nd_ch1_psd_gain_adj = ch1_avg_psd_dbm - nd_ch1_gain
     nd_ch2_psd_gain_adj = ch2_avg_psd_dbm - nd_ch2_gain
-    nd_phase_diff = phase_diff - nd_gain_phase_diff
+    nd_phase_diff = np.real(phase_diff - nd_gain_phase_diff)  # ensure real-valued
 
     if kwargs.get("graph_gain", True):
         gain_plot_path = plot_gain_comparison(fft_freq, cw_ch1_gain, cw_ch2_gain, nd_ch1_gain, nd_ch2_gain, date, LOAD_DIR)
@@ -260,11 +260,11 @@ def loadcal_main(date: str = LOAD_DATE, **kwargs) -> list[str]:
         filepaths.append(postgain_plot_path)
 
     # save results to CSV
-    # convert gain-adjusted PSDs back to linear units (W/Hz)
-    cw_ch1_psd_gain_adj_linear = 10**(cw_ch1_psd_gain_adj / 10) * 1e-3  # convert dBm/Hz to W/Hz
-    cw_ch2_psd_gain_adj_linear = 10**(cw_ch2_psd_gain_adj / 10) * 1e-3  # convert dBm/Hz to W/Hz
-    nd_ch1_psd_gain_adj_linear = 10**(nd_ch1_psd_gain_adj / 10) * 1e-3  # convert dBm/Hz to W/Hz
-    nd_ch2_psd_gain_adj_linear = 10**(nd_ch2_psd_gain_adj / 10) * 1e-3  # convert dBm/Hz to W/Hz
+    # convert gain-adjusted PSDs back to linear units (W/Hz) using safe conversion
+    cw_ch1_psd_gain_adj_linear = linear(cw_ch1_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
+    cw_ch2_psd_gain_adj_linear = linear(cw_ch2_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
+    nd_ch1_psd_gain_adj_linear = linear(nd_ch1_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
+    nd_ch2_psd_gain_adj_linear = linear(nd_ch2_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
     
     results_df = pd.DataFrame({
         'Freq': fft_freq / 1e9,
