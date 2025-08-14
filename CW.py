@@ -181,13 +181,15 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
             on='Frequency',
             direction='nearest'  # finds the closest s-param frequency
         )
+        
+        # Ensure Frequency column remains float (not complex)
+        power_df['Frequency'] = power_df['Frequency'].astype(float)
 
         return power_df, True
 
     except FileNotFoundError as e:
         print(f"Alpha/Beta S-parameter files not found: {e}. Skipping Alpha/Beta correction.")
         return power_df, False
-
 
 def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
     """
@@ -223,6 +225,10 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
         9. Generates and saves plots for power, gain, and phase difference versus frequency.
         10. Saves the corrected complex S-parameters to a CSV file.
     """    
+    # ensure output directory exists
+    if not os.path.exists(CW_DIR):
+        os.makedirs(CW_DIR)
+    
     filepaths = []
 
     # find the first CSV file ending with _{date}.csv
@@ -252,8 +258,8 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
     fft_freq = np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9))
 
     # process each frequency
-    for idx, row in tqdm(power_df.iterrows(), total=len(power_df), unit="frequencies"):
-        freq = float(row["Frequency"])
+    for idx, row in tqdm(power_df.iterrows(), total=len(power_df), unit="frequencies", colour='#808080'):
+        freq = float(np.real(row["Frequency"]))  # Ensure real part only
         curr_filename = filename.format(freq=freq, FS=FS, date=date)
 
         if not os.path.exists(os.path.join(DATA_DIR, curr_filename)):
@@ -302,7 +308,10 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
             plt.ylabel("Power (dBm)")
             plt.legend()
             plt.tight_layout()
-            plt.show()
+            fft_plot_path = os.path.join(CW_DIR, f"CW_FFT_{freq}GHz_{date}.png")
+            plt.savefig(fft_plot_path, bbox_inches='tight')
+            filepaths.append(fft_plot_path)
+            plt.close()
 
     # add raw results to dataframe
     power_df["s31_raw"] = s31_raw_list
@@ -343,8 +352,8 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
     print(f"Ch2 Gain: mean = {power_df['ch2_gain'].mean():.2f} dB, median = {power_df['ch2_gain'].median():.2f} dB")
 
     # save the updated dataframe
-    filepaths.append(os.path.join(OUT_DIR, f"CW_Processed_{csv_name}"))
-    power_df.to_csv(filepaths[-1], index=False)
+    # filepaths.append(os.path.join(CW_DIR, f"Processed_CW_{date}.csv"))
+    # power_df.to_csv(filepaths[-1], index=False)
     
     # ---------------------- Graphing All --------------------
 
@@ -365,9 +374,9 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
     plt.ylabel("Power (dBm)")
     plt.legend()
     plt.tight_layout()
-    filepaths.append(os.path.join(OUT_DIR, f"CW_Power_{date}.png"))
+    filepaths.append(os.path.join(CW_DIR, f"CW_Power_{date}.png"))
     plt.savefig(filepaths[-1], bbox_inches='tight')
-    plt.show()
+    plt.close()
 
     # ---------------------- Graph Gain and Phase Difference --------------------
     plt.figure(figsize=(10, 5))
@@ -389,9 +398,9 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
 
     plt.title("Gain and Phase Difference vs Frequency")
     plt.tight_layout()
-    filepaths.append(os.path.join(OUT_DIR, f"CW_Gain_Phase_{date}.png"))
+    filepaths.append(os.path.join(CW_DIR, f"CW_Gain_Phase_{date}.png"))
     plt.savefig(filepaths[-1], bbox_inches='tight')
-    plt.show()
+    plt.close()
 
     # ---------------------- Create Complex Gain CSV ----------------------
     complex_gain_df = pd.DataFrame({
@@ -400,7 +409,11 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
         'S46': power_df['s46_corrected'],
     })
 
-    filepaths.append(os.path.join(OUT_DIR, f"CW_Complex_Gain_{date}.csv"))
+    filepaths.append(os.path.join(CW_DIR, f"Processed_CW_{date}.csv"))
     complex_gain_df.to_csv(filepaths[-1], index=False)
 
     return filepaths
+
+
+if __name__ == "__main__":
+    CW_main()

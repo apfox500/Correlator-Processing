@@ -9,11 +9,10 @@ from typing import Annotated
 from typing import Union
 from numpy.typing import NDArray
 
-
 from Constants import *
 
 
-def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST, **kwargs) -> tuple[
+def process_noise_data(data_file_base:str, num_traces:int=NUM_TRACES, **kwargs) -> tuple[
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)]
@@ -24,7 +23,7 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST
 
     Parameters:
         data_file_base: The base string for the noise data filepaths (without index and .npy).
-        num_samples_test: Number of samples/files to process.
+        num_traces: Number of samples/files to process.
         **kwargs: Additional keyword arguments for processing options.
 
     Returns:
@@ -39,7 +38,7 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_SAMPLES_TEST
 
     # -------------------- Process Noise Files and Chunks --------------------
     # loop over the specified number of files
-    for idx in tqdm(range(num_samples_test), desc="Processing Noise Files", unit="file", total=num_samples_test):
+    for idx in tqdm(range(num_traces), desc="Processing Files", unit="file", total=num_traces, colour='#808080'):
         filename = f"{data_file_base}_{idx}.npy"
         filepath = os.path.join(DATA_DIR, filename)
         if not os.path.exists(filepath):
@@ -116,9 +115,18 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
     ch1_voltage = ch1_noise * VOLT_PER_TICK
     ch2_voltage = ch2_noise * VOLT_PER_TICK
 
+    # -------------------- Apply Window Function --------------------
+    # Apply Blackman window to reduce spectral leakage
+    window = np.blackman(SAMPLE_CUTOFF)
+    ch1_windowed = ch1_voltage * window
+    ch2_windowed = ch2_voltage * window
+    
+    # Calculate window power for PSD normalization
+    window_power = np.sum(window**2)
+
     # -------------------- FFT and PSD Calculation --------------------
-    ch1_fft = np.fft.rfft(ch1_voltage)
-    ch2_fft = np.fft.rfft(ch2_voltage)
+    ch1_fft = np.fft.rfft(ch1_windowed)
+    ch2_fft = np.fft.rfft(ch2_windowed)
 
     if graph_fft:
         plt.figure(figsize=(10, 5))
@@ -136,12 +144,12 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
     ch1_fft = ch1_fft[mask]
     ch2_fft = ch2_fft[mask]
     
-    # Calculate PSD
-    ch1_psd = 2 * np.abs(ch1_fft) ** 2 / (SAMPLE_CUTOFF * FS * 1e9)
-    ch2_psd = 2 * np.abs(ch2_fft) ** 2 / (SAMPLE_CUTOFF * FS * 1e9)
+    # Calculate PSD with window correction
+    ch1_psd = 2 * np.abs(ch1_fft) ** 2 / (window_power * FS * 1e9)
+    ch2_psd = 2 * np.abs(ch2_fft) ** 2 / (window_power * FS * 1e9)
 
-    # Calculate Cross-Spectral Density (CSD)
-    csd = 2 * (ch1_fft * np.conjugate(ch2_fft)) / (SAMPLE_CUTOFF * FS * 1e9)
+    # Calculate Cross-Spectral Density (CSD) with window correction
+    csd = 2 * (ch1_fft * np.conjugate(ch2_fft)) / (window_power * FS * 1e9)
 
     if graph_psd:
         plt.figure(figsize=(10, 5))
@@ -210,7 +218,7 @@ def print_fps(filepaths):
     if filepaths is not None:
         print("Data saved to:")
         for fp in filepaths:
-            print(fp)
+            print(f"\033[34m{fp}\033[0m")  # Blue color
 
 def parse_complex(s):
     if pd.isna(s) or s == '':
@@ -234,3 +242,62 @@ def interp_complex(target:NDArray, source:NDArray, y:NDArray[np.complex128]) -> 
     # combine magnitude and phase into complex numbers
     return mag_interp * np.exp(1j * phase_interp)
 
+
+
+def rms_resample(oldx: NDArray, newx: NDArray, y: NDArray) -> NDArray:
+    """
+    Resample dB data using RMS averaging to reduce the number of points.
+    
+    Parameters:
+        oldx (NDArray): Original x-coordinates (e.g., frequency points)
+        newx (NDArray): Target x-coordinates for resampling (fewer points)
+        y (NDArray): Original y-values in dB scale
+        
+    Returns:
+        NDArray: Resampled y-values in dB scale with length matching newx
+    """
+    if len(newx) >= len(oldx):
+        # If we're not reducing points, just interpolate
+        return np.interp(newx, oldx, y)
+    
+    # Convert dB to linear scale for RMS calculation
+    y_linear = linear(y)
+    
+    # Initialize output array
+    y_resampled = np.zeros(len(newx))
+    
+    # Calculate bin edges for the new grid
+    # We'll create bins centered on newx points
+    if len(newx) == 1:
+        # Special case: single point
+        y_resampled[0] = dB(np.sqrt(np.mean(y_linear**2)))
+        return y_resampled
+    
+    # Calculate bin edges
+    dx = (newx[-1] - newx[0]) / (len(newx) - 1)
+    bin_edges = np.zeros(len(newx) + 1)
+    bin_edges[0] = newx[0] - dx/2
+    bin_edges[1:-1] = (newx[:-1] + newx[1:]) / 2
+    bin_edges[-1] = newx[-1] + dx/2
+    
+    # Ensure bin edges don't go outside the original data range
+    bin_edges[0] = max(bin_edges[0], oldx[0])
+    bin_edges[-1] = min(bin_edges[-1], oldx[-1])
+    
+    # For each new point, find corresponding old points and calculate RMS
+    for i in range(len(newx)):
+        # Find indices of old points that fall within this bin
+        if i == 0:
+            mask = (oldx >= bin_edges[i]) & (oldx < bin_edges[i+1])
+        else:
+            mask = (oldx > bin_edges[i]) & (oldx <= bin_edges[i+1])
+        
+        if np.any(mask):
+            # Calculate RMS of linear values in this bin
+            rms_value = np.sqrt(np.mean(y_linear[mask]**2))
+            y_resampled[i] = dB(rms_value)
+        else:
+            # No points in this bin, interpolate
+            y_resampled[i] = np.interp(newx[i], oldx, y)
+    
+    return y_resampled

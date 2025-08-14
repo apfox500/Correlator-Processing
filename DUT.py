@@ -11,25 +11,66 @@ from typing import Tuple
 from Constants import *
 from utils import *
 
-def load_param_df(param_df, fft_freq, **kwargs):
-    # -------------------- Load Gain Data --------------------
-    # Load gain data from CSV file
-
-    gain_file = kwargs.get("gain_file", GAIN_FILE)
-    if not os.path.exists(gain_file):
-        raise FileNotFoundError(f"Gain file '{gain_file}' does not exist.")
+def load_param_df(param_df: pd.DataFrame, fft_freq: np.ndarray, gain_type:str = "CW", **kwargs) -> pd.DataFrame:
+    """
+    Load parameter DataFrame with gain data based on specified gain type.
     
-    gain_headers = kwargs.get("gain_headers", GAIN_HEADERS) # should be like [Freq, S31, S46]
+    Parameters:
+    -----------
+    param_df : pd.DataFrame
+        Base DataFrame containing frequency and PSD data
+    fft_freq : np.ndarray
+        Frequency array
+    gain_type : str
+        Type of gain to load ("CW" or "ND")
+    **kwargs : dict
+        Additional parameters
+        
+    Returns:
+    --------
+    pd.DataFrame
+        Parameter DataFrame with appropriate gain data loaded
+    """
+    
+    if gain_type.upper() == "CW":
+        # -------------------- Load CW Gain Data --------------------
+        cw_gain_file = kwargs.get("cw_gain_file", CW_GAIN_FILE)
+        if not os.path.exists(cw_gain_file):
+            raise FileNotFoundError(f"CW gain file '{cw_gain_file}' does not exist.")
+        
+        cw_gain_headers = kwargs.get("cw_gain_headers", CW_GAIN_HEADERS) # should be like [Freq, S31, S46]
 
-    gain_df = pd.read_csv(gain_file, converters={gain_headers[1]: parse_complex, gain_headers[2]: parse_complex})
+        cw_gain_df = pd.read_csv(cw_gain_file, converters={cw_gain_headers[1]: parse_complex, cw_gain_headers[2]: parse_complex})
 
-    s46 = gain_df[gain_headers[2]]
-    s31 = gain_df[gain_headers[1]]
+        cw_s46 = cw_gain_df[cw_gain_headers[2]]
+        cw_s31 = cw_gain_df[cw_gain_headers[1]]
 
-    # Add gain data to param_df
-    param_df['s31'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s31)
-    param_df['s46'] = interp_complex(fft_freq, gain_df['Frequency'] * 1e9, s46)
-    param_df['s46_conj'] = np.conj(param_df['s46'])
+        # Add CW gain data to param_df with standard names
+        param_df['s31'] = interp_complex(fft_freq, cw_gain_df[cw_gain_headers[0]] * 1e9, cw_s31)
+        param_df['s46'] = interp_complex(fft_freq, cw_gain_df[cw_gain_headers[0]] * 1e9, cw_s46)
+        param_df['s46_conj'] = np.conj(param_df['s46'])
+        
+    elif gain_type.upper() == "ND":
+        # -------------------- Load ND Gain Data --------------------
+        nd_gain_file = kwargs.get("nd_gain_file", ND_GAIN_FILE)
+        if not os.path.exists(nd_gain_file):
+            raise FileNotFoundError(f"ND gain file '{nd_gain_file}' does not exist.")
+        
+        nd_gain_headers = kwargs.get("nd_gain_headers", ND_GAIN_HEADERS) # should be like [Freq, Ch1 Gain, Ch2 Gain, Phase Diff]
+
+        nd_gain_df = pd.read_csv(nd_gain_file, converters={nd_gain_headers[1]: parse_complex, nd_gain_headers[2]: parse_complex})
+
+        # Interpolate complex gains directly (no need to convert from dB and phase)
+        nd_s31 = interp_complex(fft_freq, nd_gain_df[nd_gain_headers[0]] * 1e9, nd_gain_df[nd_gain_headers[1]])
+        nd_s46 = interp_complex(fft_freq, nd_gain_df[nd_gain_headers[0]] * 1e9, nd_gain_df[nd_gain_headers[2]])
+
+        # Add ND gain data to param_df with standard names
+        param_df['s31'] = nd_s31
+        param_df['s46'] = nd_s46
+        param_df['s46_conj'] = np.conj(param_df['s46'])
+        
+    else:
+        raise ValueError(f"Invalid gain_type '{gain_type}'. Must be 'CW' or 'ND'.")
 
     # -------------------- Load Load Cal Data --------------------
     load_file = kwargs.get("load_file", LOAD_FILE)
@@ -40,7 +81,8 @@ def load_param_df(param_df, fft_freq, **kwargs):
     load_df = pd.read_csv(load_file, converters={load_headers[1]: parse_complex, load_headers[2]: parse_complex}) # headers should be something like ['Freq', 'Ch1_b', 'Ch2_b', 'Phase']
 
     # resample load_df to match the frequency bins of the PSD data
-    load_freq = np.linspace(1, 2, len(load_df)) 
+    load_freq = load_df[load_headers[0]]  # Frequency column in GHz
+
     param_df['load_b3'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[1]]) / R_0 # ch1 load PSD in W/Hz
     param_df['load_b4'] = np.interp(fft_freq, load_freq * 1e9, load_df[load_headers[2]]) / R_0 # ch2 load PSD
 
@@ -210,17 +252,20 @@ def NoiseParameters(x1:NDArray[np.float64], x2:NDArray[np.float64], x12:NDArray[
         'Te': Te,
     })
 
-def dut_main(date:str, **kwargs) ->list[str]:
+def dut_main(date:str = DUT_DATE, **kwargs) ->list[str]:
+    # ensure output directory exists
+    if not os.path.exists(DUT_DIR):
+        os.makedirs(DUT_DIR)
     filepaths = []
     # -------------------- Initialization --------------------
-    num_samples_test = kwargs.get("num_samples_test", NUM_SAMPLES_TEST)
-    data_file_base = kwargs.get("data_file_base", DUT_FILENAME).format(date=date)
+    num_traces = kwargs.get("num_traces", NUM_TRACES)
+    filename = kwargs.get("filename", DUT_FILENAME).format(date=date)
     fft_freq = np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9))
 
     # -------------------- Process DUT Files and Calculate Average PSD --------------------
     ch1_avg_psd, ch2_avg_psd, csd_avg = process_noise_data(
-        data_file_base=data_file_base,
-        num_samples_test=num_samples_test,
+        data_file_base=filename,
+        num_traces=num_traces,
         fft_freq=fft_freq
     ) # psd is returned in v^2/Hz
 
@@ -235,147 +280,339 @@ def dut_main(date:str, **kwargs) ->list[str]:
 
     # -------------------- Load Gain, Load Cal, and S parameter Data --------------------
 
-    param_df = load_param_df(param_df, fft_freq, **kwargs)
+    # Create parameter DataFrames for both CW and ND gain types
+    param_df_cw = load_param_df(param_df.copy(), fft_freq, gain_type="CW", **kwargs)
+    param_df_nd = load_param_df(param_df.copy(), fft_freq, gain_type="ND", **kwargs)
 
-    # -------------------- Calculate (and plot) X-parameters --------------------
+    if kwargs.get("graph_s31_s46_phase", False):
+        plt.figure(figsize=(12, 6))
+        plt.plot(
+            fft_freq / 1e9,
+            np.degrees(np.unwrap(np.angle(param_df_cw['s31'] * param_df_cw['s46_conj']))),
+            color=COLORS[0],
+            label="CW: phase(s31 * s46_conj)"
+        )
+        plt.plot(
+            fft_freq / 1e9,
+            np.degrees(np.unwrap(np.angle(param_df_nd['s31'] * param_df_nd['s46_conj']))),
+            color=COLORS[1],
+            label="ND: phase(s31 * s46_conj)"
+        )
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel("Phase (degrees)")
+        plt.title("Phase of s31 * s46_conj vs Frequency")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_S31_S46_Phase_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
 
-    xn1_sq, xn2_sq, xn1_xn2_conj = XParameters(param_df)
+    # -------------------- Calculate X-parameters for both gain types --------------------
+
+    xn1_sq_cw, xn2_sq_cw, xn1_xn2_conj_cw = XParameters(param_df_cw)
+    xn1_sq_nd, xn2_sq_nd, xn1_xn2_conj_nd = XParameters(param_df_nd)
     
-    # Plot |xn1|^2 and |xn2|^2 (in dB/Hz, left axis)
+    # Plot |xn1|^2 and |xn2|^2 (in dB/Hz, left axis) - CW version
     if(kwargs.get("graph_x", True)):
         plt.figure(figsize=(12, 6))
         ax1 = plt.gca()
         ax2 = ax1.twinx()
-        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_sq)), label=r'$|\langle x_{n1}^2\rangle |$', color=COLORS[0])
-        ax1.plot(fft_freq / 1e9, dB(np.abs(xn2_sq)), label=r'$|\langle x_{n2}^2\rangle |$', color=COLORS[1])
-        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3])
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_sq_cw)), label=r'$|\langle x_{n1}^2\rangle |$', color=COLORS[0])
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn2_sq_cw)), label=r'$|\langle x_{n2}^2\rangle |$', color=COLORS[1])
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj_cw)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3])
         ax1.set_xlabel("Frequency (GHz)")
         ax1.set_ylabel("Magnitude (dB/Hz)")
-        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(xn1_xn2_conj))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
+        ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj_cw))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
         ax2.set_ylabel("Phase (degrees)")
         
         # Combine legends from both axes
         handles1, labels1 = ax1.get_legend_handles_labels()
         handles2, labels2 = ax2.get_legend_handles_labels()
         ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
-        plt.title("X-parameters Magnitude and Phase vs Frequency")
+        plt.title("X-parameters Magnitude and Phase vs Frequency (CW Gain)")
         plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"XParameters_{date}.png"))
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_XParameters_CW_{date}.png"))
         plt.savefig(filepaths[-1])
-        plt.show()
+        plt.close()
 
-    # -------------------- NT Calculation --------------------
-    # convert to Kelvin
-    x1 = xn1_sq / KB
-    x2 = xn2_sq / np.abs(param_df['dut_s21'])**2 / KB
-    x12 = xn1_xn2_conj / np.conj(param_df['dut_s21'])  / KB
-
-    noise_params= NoiseParameters(x1, x2, x12, param_df['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
-    
-    if kwargs.get("graph_eta", True):
-        plt.figure(figsize=(12, 6))
-        plt.plot(fft_freq / 1e9, np.abs(noise_params['eta']), color=COLORS[0], label=r'$|\eta|$')
-        plt.xlabel("Frequency (GHz)")
-        plt.ylabel(r"$|\eta|$")
-        plt.title(r"$|\eta|$ vs Frequency")
-        plt.legend()
-        plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"Eta_vs_Freq_{date}.png"))
-        plt.savefig(filepaths[-1])
-        plt.show()
-    
-    # calculate Rn (real impedance)
-    Rn = noise_params['t']/(4*296.15)*R_0 # real impedance in Ohms
-    
-    if kwargs.get("graph_rn", True):
-        plt.figure(figsize=(12, 6))
-        plt.plot(fft_freq / 1e9, Rn, color=COLORS[0], label=r'$R_n$')
-        plt.xlabel("Frequency (GHz)")
-        plt.ylabel(r"$R_n$ (Ohms)")
-        plt.title(r"$R_n$ vs Frequency")
-        plt.legend()
-        plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"Rn_vs_Freq_{date}.png"))
-        plt.savefig(filepaths[-1])
-        plt.show()
-
-    if kwargs.get("graph_gamma_opt", True):
-        # graph phase and magnitude of gamma_opt
+        # Plot |xn1|^2 and |xn2|^2 (in dB/Hz, left axis) - ND version
         plt.figure(figsize=(12, 6))
         ax1 = plt.gca()
         ax2 = ax1.twinx()
-        ax1.plot(fft_freq / 1e9, dB(np.abs(noise_params['gamma_opt'])), color=COLORS[0], label=r'$|\Gamma_{opt}|$')
-        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(noise_params['gamma_opt']))), color=COLORS[1], label=r'$\angle \Gamma_{opt}$')
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_sq_nd)), label=r'$|\langle x_{n1}^2\rangle |$', color=COLORS[0])
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn2_sq_nd)), label=r'$|\langle x_{n2}^2\rangle |$', color=COLORS[1])
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj_nd)), label=r'$|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3])
+        ax1.set_xlabel("Frequency (GHz)")
+        ax1.set_ylabel("Magnitude (dB/Hz)")
+        ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj_nd))), label=r'$\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle=':')
+        ax2.set_ylabel("Phase (degrees)")
+        
+        # Combine legends from both axes
+        handles1, labels1 = ax1.get_legend_handles_labels()
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
+        plt.title("X-parameters Magnitude and Phase vs Frequency (ND Gain)")
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_XParameters_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+
+        # Comparison plot for X-parameters
+        plt.figure(figsize=(12, 6))
+        ax1 = plt.gca()
+        ax2 = ax1.twinx()
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_sq_cw)), label=r'CW: $|\langle x_{n1}^2\rangle |$', color=COLORS[0], linestyle='-')
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_sq_nd)), label=r'ND: $|\langle x_{n1}^2\rangle |$', color=COLORS[0], linestyle='--')
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn2_sq_cw)), label=r'CW: $|\langle x_{n2}^2\rangle |$', color=COLORS[1], linestyle='-')
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn2_sq_nd)), label=r'ND: $|\langle x_{n2}^2\rangle |$', color=COLORS[1], linestyle='--')
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj_cw)), label=r'CW: $|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3], linestyle='-')
+        ax1.plot(fft_freq / 1e9, dB(np.abs(xn1_xn2_conj_nd)), label=r'ND: $|\langle x_{n1}\cdot x_{n2}^{\bf{*}}\rangle |$', color=COLORS[3], linestyle='--')
+        ax1.set_xlabel("Frequency (GHz)")
+        ax1.set_ylabel("Magnitude (dB/Hz)")
+        ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj_cw))), label=r'CW: $\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle='-')
+        ax2.plot(fft_freq / 1e9, np.degrees(np.unwrap(np.angle(xn1_xn2_conj_nd))), label=r'ND: $\angle \langle x_{n1}\cdot x_{n2}^{\bf{*}} \rangle $', color=COLORS[4], linestyle='--')
+        ax2.set_ylabel("Phase (degrees)")
+        
+        # Combine legends from both axes
+        handles1, labels1 = ax1.get_legend_handles_labels()
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
+        plt.title("X-parameters Comparison: CW vs ND Gain")
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_XParameters_Comparison_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+
+    # -------------------- NT Calculation for both gain types --------------------
+    # convert to Kelvin - CW
+    x1_cw = xn1_sq_cw / KB
+    x2_cw = xn2_sq_cw / np.abs(param_df_cw['dut_s21'])**2 / KB
+    x12_cw = xn1_xn2_conj_cw / np.conj(param_df_cw['dut_s21'])  / KB
+
+    noise_params_cw = NoiseParameters(x1_cw, x2_cw, x12_cw, param_df_cw['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
+    
+    # convert to Kelvin - ND
+    x1_nd = xn1_sq_nd / KB
+    x2_nd = xn2_sq_nd / np.abs(param_df_nd['dut_s21'])**2 / KB
+    x12_nd = xn1_xn2_conj_nd / np.conj(param_df_nd['dut_s21'])  / KB
+
+    noise_params_nd = NoiseParameters(x1_nd, x2_nd, x12_nd, param_df_nd['dut_s11'], gamma_G=kwargs.get("gamma_G", 0))
+    
+    if kwargs.get("graph_eta", True):
+        # CW eta plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, np.abs(noise_params_cw['eta']), color=COLORS[0], label=r'$|\eta|$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$|\eta|$")
+        plt.title(r"$|\eta|$ vs Frequency (CW Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Eta_CW_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+
+        # ND eta plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, np.abs(noise_params_nd['eta']), color=COLORS[0], label=r'$|\eta|$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$|\eta|$")
+        plt.title(r"$|\eta|$ vs Frequency (ND Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Eta_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+    
+    # calculate Rn (real impedance) for both
+    Rn_cw = noise_params_cw['t']/(4*296.15)*R_0 # real impedance in Ohms
+    Rn_nd = noise_params_nd['t']/(4*296.15)*R_0 # real impedance in Ohms
+    
+    if kwargs.get("graph_rn", True):
+        # CW Rn plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, Rn_cw, color=COLORS[0], label=r'$R_n$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$R_n$ (Ohms)")
+        plt.title(r"$R_n$ vs Frequency (CW Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Rn_CW_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+
+        # ND Rn plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, Rn_nd, color=COLORS[0], label=r'$R_n$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$R_n$ (Ohms)")
+        plt.title(r"$R_n$ vs Frequency (ND Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Rn_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+
+    if kwargs.get("graph_gamma_opt", True):
+        # CW gamma_opt plot
+        plt.figure(figsize=(12, 6))
+        ax1 = plt.gca()
+        ax2 = ax1.twinx()
+        ax1.plot(fft_freq / 1e9, dB(np.abs(noise_params_cw['gamma_opt'])), color=COLORS[0], label=r'$|\Gamma_{opt}|$')
+        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(noise_params_cw['gamma_opt']))), color=COLORS[1], label=r'$\angle \Gamma_{opt}$')
         ax1.set_xlabel("Frequency (GHz)")
         ax1.set_ylabel(r"$|\Gamma_{opt} (dB ?)|$")
         ax2.set_ylabel(r"$\angle \Gamma_{opt}$ (degrees)")
-        plt.title(r"$\Gamma_{opt}$ vs Frequency")
+        plt.title(r"$\Gamma_{opt}$ vs Frequency (CW Gain)")
         # Combine legends from both axes
         handles1, labels1 = ax1.get_legend_handles_labels()
         handles2, labels2 = ax2.get_legend_handles_labels()
         ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
         plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"GammaOpt_vs_Freq_{date}.png"))
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_GammaOpt_CW_{date}.png"))
         plt.savefig(filepaths[-1])
-        plt.show()
+        plt.close()
+
+        # ND gamma_opt plot  
+        plt.figure(figsize=(12, 6))
+        ax1 = plt.gca()
+        ax2 = ax1.twinx()
+        ax1.plot(fft_freq / 1e9, dB(np.abs(noise_params_nd['gamma_opt'])), color=COLORS[0], label=r'$|\Gamma_{opt}|$')
+        ax2.plot(fft_freq / 1e9, np.unwrap(np.degrees(np.angle(noise_params_nd['gamma_opt']))), color=COLORS[1], label=r'$\angle \Gamma_{opt}$')
+        ax1.set_xlabel("Frequency (GHz)")
+        ax1.set_ylabel(r"$|\Gamma_{opt} (dB ?)|$")
+        ax2.set_ylabel(r"$\angle \Gamma_{opt}$ (degrees)")
+        plt.title(r"$\Gamma_{opt}$ vs Frequency (ND Gain)")
+        # Combine legends from both axes
+        handles1, labels1 = ax1.get_legend_handles_labels()
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(handles1 + handles2, labels1 + labels2, loc="lower right")
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_GammaOpt_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
     
     if kwargs.get("graph_t_min", True):
+        # CW T_min plot
         plt.figure(figsize=(12, 6))
-        plt.plot(fft_freq / 1e9, noise_params['T_min'], color=COLORS[0], label=r'$T_{min}$')
+        plt.plot(fft_freq / 1e9, noise_params_cw['T_min'], color=COLORS[0], label=r'$T_{min}$')
         plt.xlabel("Frequency (GHz)")
         plt.ylabel(r"$T_{min}$ (K)")
-        plt.title(r"$T_{min}$ vs Frequency")
+        plt.title(r"$T_{min}$ vs Frequency (CW Gain)")
         plt.legend()
         plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"Tmin_vs_Freq_{date}.png"))
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Tmin_CW_{date}.png"))
         plt.savefig(filepaths[-1])
-        plt.show()
+        plt.close()
+
+        # ND T_min plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, noise_params_nd['T_min'], color=COLORS[0], label=r'$T_{min}$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$T_{min}$ (K)")
+        plt.title(r"$T_{min}$ vs Frequency (ND Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Tmin_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
 
     if kwargs.get("graph_te", True):
+        # CW Te plot
         plt.figure(figsize=(12, 6))
-        plt.plot(fft_freq / 1e9, noise_params['Te'], color=COLORS[0], label=r'$T_e$')
+        plt.plot(fft_freq / 1e9, noise_params_cw['Te'], color=COLORS[0], label=r'$T_e$')
         plt.xlabel("Frequency (GHz)")
         plt.ylabel(r"$T_e$ (K)")
-        plt.title(r"$T_e$ vs Frequency")
+        plt.title(r"$T_e$ vs Frequency (CW Gain)")
         plt.legend()
         plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"Te_vs_Freq_{date}.png"))
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Te_CW_{date}.png"))
         plt.savefig(filepaths[-1])
-        plt.show()
-    
-    # -------------------- Calculate and plot Noise Figure --------------------
-    # Calculate noise figure
+        plt.close()
 
-    nf = 10 * np.log10((T_AMB + noise_params['Te']) / T_AMB)
+        # ND Te plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, noise_params_nd['Te'], color=COLORS[0], label=r'$T_e$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$T_e$ (K)")
+        plt.title(r"$T_e$ vs Frequency (ND Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_Te_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+    
+    # -------------------- Calculate and plot Noise Figure for both --------------------
+    # Calculate noise figure for both
+    nf_cw = 10 * np.log10((T_AMB + noise_params_cw['Te']) / T_AMB)
+    nf_nd = 10 * np.log10((T_AMB + noise_params_nd['Te']) / T_AMB)
 
     if kwargs.get("graph_nf", True):
-        #plot noise figure
+        # CW noise figure plot
         plt.figure(figsize=(12, 6))
-        plt.plot(fft_freq / 1e9, nf, color=COLORS[0], label=r'$NF$')
+        plt.plot(fft_freq / 1e9, nf_cw, color=COLORS[0], label=r'$NF$')
         plt.xlabel("Frequency (GHz)")
         plt.ylabel(r"$NF$ (dB)")
-        plt.title(r"$NF$ vs Frequency")
+        plt.title(r"$NF$ vs Frequency (CW Gain)")
         plt.legend()
         plt.tight_layout()
-        filepaths.append(os.path.join(OUT_DIR, f"NF_vs_Freq_{date}.png"))
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_NF_CW_{date}.png"))
         plt.savefig(filepaths[-1])
-        plt.show()
+        plt.close()
+
+        # ND noise figure plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, nf_nd, color=COLORS[0], label=r'$NF$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$NF$ (dB)")
+        plt.title(r"$NF$ vs Frequency (ND Gain)")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_NF_ND_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+
+        # Comparison plot for noise figure
+        plt.figure(figsize=(12, 6))
+        plt.plot(fft_freq / 1e9, nf_cw, color=COLORS[0], linestyle='-', label=r'CW: $NF$')
+        plt.plot(fft_freq / 1e9, nf_nd, color=COLORS[0], linestyle='--', label=r'ND: $NF$')
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel(r"$NF$ (dB)")
+        plt.title(r"Noise Figure Comparison: CW vs ND Gain")
+        plt.legend()
+        plt.tight_layout()
+        filepaths.append(os.path.join(DUT_DIR, f"DUT_NF_Comparison_{date}.png"))
+        plt.savefig(filepaths[-1])
+        plt.close()
+        
     # -------------------- Save results --------------------
     xparams_df = pd.DataFrame({
         'Frequency (GHz)': fft_freq / 1e9,
-        'xn1_sq': xn1_sq,
-        'xn2_sq': xn2_sq,
-        'xn1_xn2_conj': xn1_xn2_conj,
-        'Te': noise_params['Te'],
-        'T_min': noise_params['T_min'],
-        'gamma_opt': noise_params['gamma_opt'],
-        'gamma_G': noise_params['gamma_G'],
-        't': noise_params['t'],
-        'Rn': Rn,
-        'NF': nf,
-
+        'CW xn1_sq': xn1_sq_cw,
+        'CW xn2_sq': xn2_sq_cw,
+        'CW xn1_xn2_conj': xn1_xn2_conj_cw,
+        'CW Te': noise_params_cw['Te'],
+        'CW T_min': noise_params_cw['T_min'],
+        'CW gamma_opt': noise_params_cw['gamma_opt'],
+        'CW gamma_G': noise_params_cw['gamma_G'],
+        'CW t': noise_params_cw['t'],
+        'CW Rn': Rn_cw,
+        'CW NF': nf_cw,
+        'ND xn1_sq': xn1_sq_nd,
+        'ND xn2_sq': xn2_sq_nd,
+        'ND xn1_xn2_conj': xn1_xn2_conj_nd,
+        'ND Te': noise_params_nd['Te'],
+        'ND T_min': noise_params_nd['T_min'],
+        'ND gamma_opt': noise_params_nd['gamma_opt'],
+        'ND gamma_G': noise_params_nd['gamma_G'],
+        'ND t': noise_params_nd['t'],
+        'ND Rn': Rn_nd,
+        'ND NF': nf_nd,
     })
-    filepaths.append(f"Processed_DUT_{date}.csv")
+    filepaths.append(os.path.join(DUT_DIR, f"Processed_DUT_{date}.csv"))
     xparams_df.to_csv(filepaths[-1], index=False)
 
     return filepaths
+
+
+if __name__ == "__main__":
+    dut_main()
