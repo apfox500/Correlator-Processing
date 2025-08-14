@@ -47,7 +47,7 @@ ND_GAIN_FILE = f"./correlator_testing_output/NoiseDiode/Processed_Noise_{ND_DATE
 ND_GAIN_HEADERS = ['Freq (GHz)', 'Ch1 Gain', 'Ch2 Gain', 'Phase Difference (rad)']
 
 LOAD_FILE = f"./correlator_testing_output/LoadCal/Processed_Load_{LOAD_DATE}.csv"
-ND_LOAD_HEADERS = ['Freq', 'Ch1 PSD', 'Ch2 PSD']
+LOAD_HEADERS = ['Freq', 'Ch1 PSD', 'Ch2 PSD']
 
 # DUT only
 DUT_S_FILE = "alphabeta/DUT1.s2p"
