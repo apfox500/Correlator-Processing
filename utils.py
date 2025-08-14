@@ -1,34 +1,45 @@
 import os
 
-from tqdm import tqdm
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
-from typing import Annotated
-from typing import Union
+from typing import Annotated, Union
 from numpy.typing import NDArray
 
 from Constants import *
 
 
-def process_noise_data(data_file_base:str, num_traces:int=NUM_TRACES, **kwargs) -> tuple[
+def process_noise_data(data_file_base: str, num_traces: int = NUM_TRACES, **kwargs) -> tuple[
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)]
 ]:
     """
-    Process all noise data files and return average PSD for ch1 and ch2.
-    This function processes data in chunks of SAMPLE_CUTOFF to handle large files.
-
+    Process multiple noise data files and return averaged power spectral densities.
+    
+    Processes data in chunks of SAMPLE_CUTOFF samples to handle large files efficiently.
+    Calculates power spectral density (PSD) and cross-spectral density (CSD) from 
+    correlator noise measurements.
+    
     Parameters:
-        data_file_base: The base string for the noise data filepaths (without index and .npy).
-        num_traces: Number of samples/files to process.
-        **kwargs: Additional keyword arguments for processing options.
-
+        data_file_base (str): Base string for noise data filepaths (without index and .npy extension).
+        num_traces (int, optional): Number of data files to process. Defaults to NUM_TRACES.
+        **kwargs: Additional processing options:
+            fft_freq (np.ndarray, optional): Custom frequency array for FFT calculations.
+            
     Returns:
-        ch1_avg_psd, ch2_avg_psd: Average PSD arrays for ch1 and ch2 in V^2/Hz.
-        csd_avg: Average Cross-Spectral Density (CSD) array.
+        tuple[NDArray, NDArray, NDArray]: Tuple containing:
+            - ch1_avg_psd: Average power spectral density for channel 1 in V²/Hz
+            - ch2_avg_psd: Average power spectral density for channel 2 in V²/Hz  
+            - csd_avg: Average cross-spectral density between channels in V²/Hz
+            
+    Notes:
+        - Files are processed in chunks to manage memory usage for large datasets
+        - Only processes files that exist; missing files are skipped with warning
+        - Returns zero arrays if no valid data chunks are processed
+        - All PSDs are calculated over 1-2 GHz frequency range
     """
     # -------------------- Initialization --------------------
     fft_freq = kwargs.get("fft_freq", np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9)))
@@ -86,24 +97,32 @@ def process_noise_data(data_file_base:str, num_traces:int=NUM_TRACES, **kwargs) 
 
 def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) -> tuple[NDArray, NDArray, NDArray]:
     """
-    Processes noise data from two channels, computes their FFT, cross-spectral density (CSD), and power spectral density (PSD).
-
+    Process noise data from two channels to compute power and cross-spectral densities.
+    
+    Applies windowing, performs FFT analysis, and calculates power spectral density (PSD)
+    and cross-spectral density (CSD) for correlator measurements. Processing is limited
+    to the 1-2 GHz frequency band of interest.
+    
     Parameters:
-        data_array (np.ndarray): 2D array of raw noise data with shape (2, N), where each row corresponds to a channel.
-        fft_freq (np.ndarray): 1D array of frequency bins corresponding to the FFT output.
-        **kwargs:
-            graph_fft (bool, optional): If True, plots the FFT magnitude of both channels. Default is False.
-            graph_psd (bool, optional): If True, plots the PSD of both channels. Default is False.
-
+        data_array (NDArray): 2D array of raw noise data with shape (2, N) where each row 
+            corresponds to a channel.
+        fft_freq (NDArray): 1D array of frequency bins corresponding to the FFT output in Hz.
+        **kwargs: Optional plotting and processing parameters:
+            graph_fft (bool, optional): Plot FFT magnitude of both channels. Defaults to False.
+            graph_psd (bool, optional): Plot PSD of both channels. Defaults to False.
+            
     Returns:
-        tuple:
-            ch1_psd (np.ndarray): Power spectral density of channel 1 (trimmed to 1-2 GHz).
-            ch2_psd (np.ndarray): Power spectral density of channel 2 (trimmed to 1-2 GHz).
-            csd (np.ndarray): Cross-spectral density (complex) between channel 1 and channel 2 (trimmed to 1-2 GHz).
-
+        tuple[NDArray, NDArray, NDArray]: Tuple containing:
+            - ch1_psd: Power spectral density of channel 1 in V²/Hz (1-2 GHz only)
+            - ch2_psd: Power spectral density of channel 2 in V²/Hz (1-2 GHz only)
+            - csd: Cross-spectral density between channels in V²/Hz (1-2 GHz only)
+            
     Notes:
-        - Only the frequency range 1-2 GHz is considered for PSD and CSD calculations.
-        - Plots are displayed if the corresponding keyword arguments are set to True.
+        - Applies Blackman window to reduce spectral leakage
+        - Converts raw ADC counts to voltage using VOLT_PER_TICK scaling
+        - PSD includes factor of 2 for single-sided spectrum
+        - Window power correction applied for accurate PSD calculation
+        - Only 1-2 GHz frequency range retained for correlator analysis
     """
 
     graph_fft = kwargs.get("graph_fft", False)
@@ -166,74 +185,139 @@ def process_single_noise_data(data_array: NDArray, fft_freq: NDArray, **kwargs) 
 
 def dB(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
-    Convert a linear value or array to decibels (dB).
+    Convert linear values to decibels (dB) scale.
+    
     Parameters:
-        value (float or np.ndarray): Linear value(s) to convert. Must be > 0 for valid dB result.
+        value (Union[float, NDArray]): Linear value(s) to convert. Must be > 0 for valid result.
+        
     Returns:
-        float or np.ndarray: Value(s) in dB. Returns -np.inf for elements <= 0.
+        Union[float, NDArray]: Value(s) in dB. Returns -np.inf for elements ≤ 0.
+        
+    Notes:
+        - Uses 10*log10 conversion formula
+        - Handles both scalar and array inputs
+        - Returns -inf for non-positive values to avoid math domain errors
     """
     return 10 * np.log10(value) if np.all(value > 0) else np.where(value > 0, 10 * np.log10(value), -np.inf)
 
 def db(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
-    Alias for dB function to maintain compatibility with existing code.
+    Alias for dB function to maintain backward compatibility.
+    
     Parameters:
-        value (float or np.ndarray): Linear value(s) to convert.
+        value (Union[float, NDArray]): Linear value(s) to convert.
+        
     Returns:
-        float or np.ndarray: Value(s) in dB.
+        Union[float, NDArray]: Value(s) in dB.
     """
     return dB(value)
 
 def dBm(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
-    Convert a linear value or array (in Watts) to decibels-milliwatts (dBm).
+    Convert power values in Watts to decibels-milliwatts (dBm).
+    
     Parameters:
-        value (float or np.ndarray): Linear value(s) in Watts. Must be > 0 for valid dBm result.
+        value (Union[float, NDArray]): Power value(s) in Watts. Must be > 0 for valid result.
+        
     Returns:
-        float or np.ndarray: Value(s) in dBm. Returns -np.inf for elements <= 0.
+        Union[float, NDArray]: Power value(s) in dBm. Returns -np.inf for elements ≤ 0.
+        
+    Notes:
+        - Uses formula: dBm = 10*log10(P_watts * 1000)
+        - Reference level is 1 milliwatt (1 mW = 0 dBm)
+        - Commonly used for RF power measurements
     """
     return 10 * np.log10(value * 1e3) if np.all(value > 0) else np.where(value > 0, 10 * np.log10(value * 1e3), -np.inf)
 
 def dbm(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
-    Alias for dBm function to maintain compatibility with existing code.
+    Alias for dBm function to maintain backward compatibility.
+    
     Parameters:
-        value (float or np.ndarray): Linear value(s) in Watts.
+        value (Union[float, NDArray]): Power value(s) in Watts.
+        
     Returns:
-        float or np.ndarray: Value(s) in dBm.
+        Union[float, NDArray]: Power value(s) in dBm.
     """
     return dBm(value)
 
 def linear(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """
-    Convert a value or array in decibels (dB) to linear scale.
+    Convert decibel (dB) values to linear scale.
+    
     Parameters:
-        value (float or np.ndarray): Value(s) in dB.
+        value (Union[float, NDArray]): Value(s) in dB scale.
+        
     Returns:
-        float or np.ndarray: Linear value(s). Returns 0 for elements that are -np.inf.
+        Union[float, NDArray]: Linear scale value(s). Returns 0 for -np.inf elements.
+        
+    Notes:
+        - Uses formula: linear = 10^(dB/10)
+        - Inverse operation of dB function
+        - Returns 0 for -inf inputs (representing zero power/amplitude)
     """
     return 10 ** (value / 10) if np.all(value > -np.inf) else np.where(value > -np.inf, 10 ** (value / 10), 0)
 
-def print_fps(filepaths):
+def print_fps(filepaths: list[str]) -> None:
+    """
+    Print a formatted list of file paths with blue color formatting.
+    
+    Parameters:
+        filepaths (list[str]): List of file paths to display.
+        
+    Returns:
+        None
+        
+    Notes:
+        - Prints "Data saved to:" header followed by each file path
+        - File paths are displayed in blue color using ANSI escape codes
+        - Does nothing if filepaths is None or empty
+    """
     if filepaths is not None:
         print("Data saved to:")
         for fp in filepaths:
             print(f"\033[34m{fp}\033[0m")  # Blue color
 
-def parse_complex(s):
+def parse_complex(s: str) -> complex:
+    """
+    Parse a string representation of a complex number.
+    
+    Parameters:
+        s (str): String representation of complex number, may include parentheses.
+        
+    Returns:
+        complex: Parsed complex number, or np.nan if input is invalid/empty.
+        
+    Notes:
+        - Handles strings with or without parentheses
+        - Returns np.nan for empty strings or pandas NaN values
+        - Used for loading complex S-parameter data from CSV files
+    """
     if pd.isna(s) or s == '':
         return np.nan
     return complex(s.strip('()'))
 
-def interp_complex(target:NDArray, source:NDArray, y:NDArray[np.complex128]) -> NDArray[np.complex128]:
+def interp_complex(target: NDArray, source: NDArray, y: NDArray[np.complex128]) -> NDArray[np.complex128]:
     """
-    Interpolates a complex array y from source to target.
+    Interpolate complex-valued data by separately interpolating magnitude and phase.
+    
+    Performs complex interpolation by unwrapping the phase to handle discontinuities
+    properly, then recombining magnitude and phase components. This approach preserves
+    the complex nature of the data better than interpolating real and imaginary parts.
+    
     Parameters:
-        target (np.ndarray): Target x-coordinates.
-        source (np.ndarray): Source x-coordinates.
-        y (np.ndarray[np.complex128]): Complex values to interpolate.
+        target (NDArray): Target x-coordinates for interpolated values.
+        source (NDArray): Source x-coordinates corresponding to input data.
+        y (NDArray[np.complex128]): Complex values to interpolate.
+        
     Returns:
-        np.ndarray[np.complex128]: Interpolated complex values at target.
+        NDArray[np.complex128]: Interpolated complex values at target coordinates.
+        
+    Notes:
+        - Phase is unwrapped before interpolation to handle 2π discontinuities
+        - Magnitude and phase are interpolated separately using linear interpolation
+        - Result maintains complex data integrity better than real/imaginary interpolation
+        - Useful for S-parameter and other RF measurement data interpolation
     """
     # interpolate phase and magnitude separately
     phase_interp = np.interp(target, source, np.unwrap(np.angle(y)))
@@ -246,15 +330,27 @@ def interp_complex(target:NDArray, source:NDArray, y:NDArray[np.complex128]) -> 
 
 def rms_resample(oldx: NDArray, newx: NDArray, y: NDArray) -> NDArray:
     """
-    Resample dB data using RMS averaging to reduce the number of points.
+    Resample dB-scale data using RMS averaging to reduce data points while preserving power.
+    
+    Converts dB data to linear scale, performs RMS averaging within bins, then converts
+    back to dB. This preserves the power content better than simple linear interpolation
+    when downsampling spectral data.
     
     Parameters:
-        oldx (NDArray): Original x-coordinates (e.g., frequency points)
-        newx (NDArray): Target x-coordinates for resampling (fewer points)
-        y (NDArray): Original y-values in dB scale
+        oldx (NDArray): Original x-coordinates (e.g., frequency points).
+        newx (NDArray): Target x-coordinates for resampling (typically fewer points).
+        y (NDArray): Original y-values in dB scale to be resampled.
         
     Returns:
-        NDArray: Resampled y-values in dB scale with length matching newx
+        NDArray: Resampled y-values in dB scale with length matching newx.
+        
+    Notes:
+        - If newx has more points than oldx, falls back to linear interpolation
+        - Creates bins centered on newx points for RMS averaging
+        - Bin edges are constrained to original data range
+        - For bins with no data points, uses linear interpolation
+        - Preserves power content better than linear resampling for spectral data
+        - Handles special case of single target point
     """
     if len(newx) >= len(oldx):
         # If we're not reducing points, just interpolate

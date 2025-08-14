@@ -7,34 +7,165 @@ import skrf as rf
 from tqdm import tqdm
 
 from Constants import *
-from utils import dBm
+
+def fft_to_dbm(fft_array, n_samples, impedance):
+    """
+    Convert FFT array to power in dBm for plotting purposes.
+    
+    Parameters:
+        fft_array (np.ndarray): Complex FFT array.
+        n_samples (int): Number of samples used in FFT.
+        impedance (float): System impedance in ohms.
+        
+    Returns:
+        np.ndarray: Power spectrum in dBm.
+    """
+    v_peak = (np.abs(fft_array) / n_samples) * 2
+    v_rms = v_peak / np.sqrt(2)
+    power_watts = (v_rms**2) / impedance
+    power_watts[power_watts < 1e-20] = 1e-20  # avoid log(0)
+    return 10 * np.log10(power_watts) + 30
+
+def plot_fft_spectrum(ch1_fft, ch2_fft, fft_freq, ch1_real_freq, ch2_real_freq, freq, date, output_dir):
+    """
+    Plot FFT spectrum for both channels with selected frequency points highlighted.
+    
+    Parameters:
+        ch1_fft (np.ndarray): Complex FFT array for channel 1.
+        ch2_fft (np.ndarray): Complex FFT array for channel 2.
+        fft_freq (np.ndarray): Frequency array for FFT bins in Hz.
+        ch1_real_freq (float): Selected frequency for channel 1 in Hz.
+        ch2_real_freq (float): Selected frequency for channel 2 in Hz.
+        freq (float): Target frequency in GHz.
+        date (str): Date string for filename.
+        output_dir (str): Output directory path.
+        
+    Returns:
+        str: Path to the saved plot file.
+    """
+    ch1_dbm = fft_to_dbm(ch1_fft, SAMPLE_CUTOFF, R_0)
+    ch2_dbm = fft_to_dbm(ch2_fft, SAMPLE_CUTOFF, R_0)
+    
+    plt.figure(figsize=(10, 5))
+    plt.plot(fft_freq, ch1_dbm, '-', label='Ch1 FFT', color=COLORS[0], linewidth=1)
+    plt.plot(fft_freq, ch2_dbm, '-', label='Ch2 FFT', color=COLORS[1], linewidth=1)
+    plt.scatter([ch1_real_freq], [ch1_dbm[np.argmin(np.abs(fft_freq - ch1_real_freq))]], 
+                color=COLORS[0], s=100, label='Ch1 Selected Freq', zorder=5)
+    plt.scatter([ch2_real_freq], [ch2_dbm[np.argmin(np.abs(fft_freq - ch2_real_freq))]], 
+                color=COLORS[1], s=100, label='Ch2 Selected Freq', zorder=5)
+    plt.title(f"FFT of Channels at {freq} GHz")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power (dBm)")
+    plt.legend()
+    plt.tight_layout()
+    
+    fft_plot_path = os.path.join(output_dir, f"CW_FFT_{freq}GHz_{date}.png")
+    plt.savefig(fft_plot_path, bbox_inches='tight')
+    plt.close()
+    return fft_plot_path
+
+def plot_power_results(power_df, date, output_dir):
+    """
+    Plot corrected output power versus frequency.
+    
+    Parameters:
+        power_df (pd.DataFrame): DataFrame containing power and frequency data.
+        date (str): Date string for filename.
+        output_dir (str): Output directory path.
+        
+    Returns:
+        str: Path to the saved plot file.
+    """
+    plt.figure(figsize=(10, 5))
+    plt.plot(power_df["ch1_real_freq"] / 1e9, power_df["ch1_power_out_dbm"], 
+             '-o', label='Ch1 Power Out (Corrected)', color=COLORS[0], alpha=.7)
+    plt.plot(power_df["ch2_real_freq"] / 1e9, power_df["ch2_power_out_dbm"], 
+             '-o', label='Ch2 Power Out (Corrected)', color=COLORS[1], alpha=.7)
+    
+    plt.plot(power_df["Frequency"], power_df["Power(dBm)"], '-', label='Power In', color='red')
+    if "power_norminal" in power_df.columns:
+        plt.plot(power_df["Frequency"], power_df["power_norminal"], 
+                 '--', label='Nominal Power In', color='red', alpha=0.5)
+
+    plt.title("Corrected Output Power from CW Measurement")
+    plt.xlabel("Frequency (GHz)")
+    plt.ylabel("Power (dBm)")
+    plt.legend()
+    plt.tight_layout()
+    
+    power_plot_path = os.path.join(output_dir, f"CW_Power_{date}.png")
+    plt.savefig(power_plot_path, bbox_inches='tight')
+    plt.close()
+    return power_plot_path
+
+def plot_gain_phase_results(power_df, date, output_dir):
+    """
+    Plot gain and phase difference versus frequency.
+    
+    Parameters:
+        power_df (pd.DataFrame): DataFrame containing gain and phase data.
+        date (str): Date string for filename.
+        output_dir (str): Output directory path.
+        
+    Returns:
+        str: Path to the saved plot file.
+    """
+    plt.figure(figsize=(10, 5))
+    ax1 = plt.gca()
+    ax2 = ax1.twinx()
+
+    # plot gain
+    ax1.plot(power_df["ch1_real_freq"] / 1e9, power_df["ch1_gain"], 
+             '-', color=COLORS[0], label='Ch1 Gain')
+    ax1.plot(power_df["ch2_real_freq"] / 1e9, power_df["ch2_gain"], 
+             '-', color=COLORS[1], label='Ch2 Gain')
+    ax1.set_xlabel("Frequency (GHz)")
+    ax1.set_ylabel("Gain (dB)")
+    ax1.legend(loc="lower left")
+
+    # plot phase difference (convert to degrees)
+    phase_diff_deg = np.degrees(np.unwrap(power_df["phase_diff"].dropna()))
+    ax2.plot(power_df["ch1_real_freq"].dropna() / 1e9, phase_diff_deg, 
+             '-', color=COLORS[3], label='Phase Difference')
+    ax2.set_ylabel("Phase Difference (degrees)")
+    ax2.legend(loc="upper right")
+
+    plt.title("Gain and Phase Difference vs Frequency")
+    plt.tight_layout()
+    
+    gain_phase_plot_path = os.path.join(output_dir, f"CW_Gain_Phase_{date}.png")
+    plt.savefig(gain_phase_plot_path, bbox_inches='tight')
+    plt.close()
+    return gain_phase_plot_path
 
 def process_CWdata(ch1_data, ch2_data, input_power_dbm, freq, **kwargs):
-    """Process time-domain data to calculate raw complex S-parameters.
+    """
+    Process time-domain data to calculate raw complex S-parameters.
 
     This function takes time-domain voltage data for two channels and calculates
     the raw, uncorrected complex S-parameters (e.g., S31, S46) based on the
     known input power.
 
     Parameters:
-        ch1_data: Time-domain data for channel 1.
-        ch2_data: Time-domain data for channel 2.
-        input_power_dbm: The input power in dBm.
-        freq: The target frequency in GHz.
+        ch1_data (np.ndarray): Time-domain data for channel 1.
+        ch2_data (np.ndarray): Time-domain data for channel 2.
+        input_power_dbm (float): The input power in dBm.
+        freq (float): The target frequency in GHz.
         **kwargs: Additional keyword arguments.
-            fft_freq: Frequency bins for the FFT.
-            ch1s, ch2s: S-parameter compensation networks (optional).
-            impedance: System impedance (default R_0).
-            n_samples: Number of FFT samples (default SAMPLE_CUTOFF).
+            fft_freq (np.ndarray): Frequency bins for the FFT.
+            ch1s (np.ndarray): S-parameter compensation network for channel 1 (optional).
+            ch2s (np.ndarray): S-parameter compensation network for channel 2 (optional).
+            impedance (float): System impedance in ohms (default R_0).
+            n_samples (int): Number of FFT samples (default SAMPLE_CUTOFF).
 
     Returns:
-        A tuple containing:
-        - s31_raw (complex): The raw complex S-parameter for channel 1.
-        - s46_raw (complex): The raw complex S-parameter for channel 2.
-        - ch1_real_freq (float): The actual frequency bin for channel 1.
-        - ch2_real_freq (float): The actual frequency bin for channel 2.
-        - ch1_fft (np.ndarray): The full complex FFT spectrum for channel 1.
-        - ch2_fft (np.ndarray): The full complex FFT spectrum for channel 2.
+        tuple: A tuple containing:
+            - s31_raw (complex): The raw complex S-parameter for channel 1.
+            - s46_raw (complex): The raw complex S-parameter for channel 2.
+            - ch1_real_freq (float): The actual frequency bin for channel 1 in Hz.
+            - ch2_real_freq (float): The actual frequency bin for channel 2 in Hz.
+            - ch1_fft (np.ndarray): The full complex FFT spectrum for channel 1.
+            - ch2_fft (np.ndarray): The full complex FFT spectrum for channel 2.
     """
     # get kwargs
     fft_freq = kwargs.get("fft_freq", np.fft.rfftfreq(SAMPLE_CUTOFF, d=1/(FS*1e9)))
@@ -43,7 +174,7 @@ def process_CWdata(ch1_data, ch2_data, input_power_dbm, freq, **kwargs):
     ch1s = kwargs.get("ch1s", None)
     ch2s = kwargs.get("ch2s", None)
 
-    # convert ADC ticks to voltage
+    # convert ADC counts to voltage
     ch1_voltage = ch1_data * VOLT_PER_TICK
     ch2_voltage = ch2_data * VOLT_PER_TICK
 
@@ -53,8 +184,8 @@ def process_CWdata(ch1_data, ch2_data, input_power_dbm, freq, **kwargs):
 
     # compensate with S-parameters if provided
     if ch1s is not None and ch2s is not None:
-        ch1_fft /= ch1s[:, 1, 0]  # S21 for channel 1
-        ch2_fft /= ch2s[:, 1, 0]  # S21 for channel 2
+        ch1_fft /= ch1s[:, 1, 0]  # Apply S21 correction for channel 1
+        ch2_fft /= ch2s[:, 1, 0]  # Apply S21 correction for channel 2
 
     # find the index closest to the target frequency
     target_freq_hz = freq * 1e9
@@ -67,7 +198,7 @@ def process_CWdata(ch1_data, ch2_data, input_power_dbm, freq, **kwargs):
     # --- Complex S-Parameter Calculation ---
     # calculate the incident wave 'a' from input power
     power_watts = 10**((input_power_dbm - 30) / 10)
-    a_in = np.sqrt(power_watts) # assume phase is 0
+    a_in = np.sqrt(power_watts)  # assume phase is 0
 
     # calculate the outgoing wave 'b' from the measured FFT voltage
     # b = V_rms / sqrt(Z0), where V_rms = V_peak / sqrt(2)
@@ -149,11 +280,11 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
         # 6 - G^NCout
         file6 = kwargs.get("file6", FILE6)
         GNCout = pd.Series(
-            rf.Network(file6).interpolate(common_freq).s[:, 0, 0], # S11
+            rf.Network(file6).interpolate(common_freq).s[:, 0, 0],  # S11
             index=freq_axis_ghz
         )  
 
-        # Load inot one dataframe
+        # load all S-parameters into one dataframe
         sparam_df = pd.DataFrame({
             'SSP1A': SSP1A, 'SSP11': SSP11,
             'SSPBB': SSPBB, 'SSPBA': SSPBA,
@@ -162,19 +293,21 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
             'GNCout': GNCout
         })
 
+        # calculate alpha correction factor for channel 1
         alpha_num = sparam_df['SSP1A'] * (1 - sparam_df['SSPBB'] * sparam_df['GPM'])
         alpha_den = sparam_df['SSPBA'] * (1 - sparam_df['SSP11'] * sparam_df['GNCin'])
         sparam_df['alpha'] = alpha_num / alpha_den
 
+        # calculate beta correction factor for channel 2
         beta_num = sparam_df['SSP6A'] * (1 - sparam_df['SSPBB'] * sparam_df['GPM'])
         beta_den = sparam_df['SSPBA'] * (1 - sparam_df['SSP66'] * sparam_df['GNCout'])
         sparam_df['beta'] = beta_num / beta_den
         
-        # Sort and merge alpha and beta with power dataframe
-
+        # sort and merge alpha/beta corrections with power dataframe
         power_df = power_df.sort_values('Frequency').reset_index(drop=True)
         sparam_df = sparam_df.sort_index().reset_index().rename(columns={'index': 'Frequency'})
-        # Only merge alpha and beta columns from sparam_df into power_df
+        
+        # merge alpha, beta, and GPM columns using nearest frequency matching
         power_df = pd.merge_asof(
             left=power_df,
             right=sparam_df[['Frequency', 'alpha', 'beta', 'GPM']],
@@ -182,7 +315,7 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
             direction='nearest'  # finds the closest s-param frequency
         )
         
-        # Ensure Frequency column remains float (not complex)
+        # ensure frequency column remains float (not complex)
         power_df['Frequency'] = power_df['Frequency'].astype(float)
 
         return power_df, True
@@ -191,39 +324,27 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
         print(f"Alpha/Beta S-parameter files not found: {e}. Skipping Alpha/Beta correction.")
         return power_df, False
 
-def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
+def CW_main(date: str = CW_DATE, **kwargs) -> list[str]:
     """
-    Main function to process continuous wave (CW) measurement data, calculate gain, apply S-parameter corrections,
-    and generate summary plots.
+    Main function to process continuous wave (CW) measurement data and generate analysis results.
+    
+    This function processes CW measurement data to calculate gain, apply S-parameter corrections,
+    and generate summary plots and CSV files with corrected complex S-parameters.
     
     Parameters:
-        date (str): The date string used to identify the relevant CSV and data files. Defaults to CW_DATE.
-        **kwargs (dict): Additional keyword arguments:
-            - filename (str): Template for the data file names. Defaults to CW_FILENAME.
-            - graph_flag (int): Controls which frequency indices to graph.
-                0 = none, 1 = first and last, 2 = all. Defaults to 0.
-            - file_kwargs (dict): Additional keyword arguments passed to the alphabeta_correction function.
+        date (str): The date string used to identify the relevant CSV and data files. 
+                   Defaults to CW_DATE from Constants.
+        **kwargs: Additional keyword arguments.
+            filename (str): Template for the data file names. Defaults to CW_FILENAME.
+            graph_flag (int): Controls which frequency indices to graph.
+                            0 = none, 1 = first and last, 2 = all. Defaults to 0.
+            file_kwargs (dict): Additional keyword arguments passed to alphabeta_correction.
     
     Returns:
-        list[str]: A list of file paths for all generated files.
+        list[str]: A list of file paths for all generated output files.
 
     Raises:
         FileNotFoundError: If no CSV files matching the date pattern are found in the data directory.
-    
-    Process Overview:
-        1. Locates the first CSV file in the data directory matching the specified date.
-        2. Loads the power measurement data from the CSV file.
-        3. Applies S-parameter (alpha/beta) corrections if available.
-        4. Iterates over each frequency row:
-            - Loads the corresponding data file.
-            - Processes the data to extract raw complex S-parameters.
-            - Optionally graphs FFT spectrum for selected indices.
-        5. Applies alpha/beta corrections using complex arithmetic.
-        6. Calculates final channel gains (dB) and phase from the corrected complex S-parameters.
-        7. Prints summary statistics for channel gains.
-        8. Saves the processed DataFrame to a new CSV file.
-        9. Generates and saves plots for power, gain, and phase difference versus frequency.
-        10. Saves the corrected complex S-parameters to a CSV file.
     """    
     # ensure output directory exists
     if not os.path.exists(CW_DIR):
@@ -259,7 +380,7 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
 
     # process each frequency
     for idx, row in tqdm(power_df.iterrows(), total=len(power_df), unit="frequencies", colour='#808080'):
-        freq = float(np.real(row["Frequency"]))  # Ensure real part only
+        freq = float(np.real(row["Frequency"]))  # ensure frequency is real (not complex)
         curr_filename = filename.format(freq=freq, FS=FS, date=date)
 
         if not os.path.exists(os.path.join(DATA_DIR, curr_filename)):
@@ -287,31 +408,10 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
 
         # graph frequency response if requested
         if idx in graph_indices:
-            # this logic is just for the plot, replicating old fft_to_dbm
-            def to_dbm(fft_array, n_samples, impedance):
-                v_peak = (np.abs(fft_array) / n_samples) * 2
-                v_rms = v_peak / np.sqrt(2)
-                power_watts = (v_rms**2) / impedance
-                power_watts[power_watts < 1e-20] = 1e-20 # avoid log(0)
-                return 10 * np.log10(power_watts) + 30
-
-            ch1_dbm = to_dbm(ch1_fft, SAMPLE_CUTOFF, R_0)
-            ch2_dbm = to_dbm(ch2_fft, SAMPLE_CUTOFF, R_0)
-            
-            plt.figure(figsize=(10, 5))
-            plt.plot(fft_freq, ch1_dbm, '-', label='Ch1 FFT', color=COLORS[0], linewidth=1)
-            plt.plot(fft_freq, ch2_dbm, '-', label='Ch2 FFT', color=COLORS[1], linewidth=1)
-            plt.scatter([f1], [ch1_dbm[np.argmin(np.abs(fft_freq - f1))]], color=COLORS[0], s=100, label='Ch1 Selected Freq', zorder=5)
-            plt.scatter([f2], [ch2_dbm[np.argmin(np.abs(fft_freq - f2))]], color=COLORS[1], s=100, label='Ch2 Selected Freq', zorder=5)
-            plt.title(f"FFT of Channels at {freq} GHz")
-            plt.xlabel("Frequency (Hz)")
-            plt.ylabel("Power (dBm)")
-            plt.legend()
-            plt.tight_layout()
-            fft_plot_path = os.path.join(CW_DIR, f"CW_FFT_{freq}GHz_{date}.png")
-            plt.savefig(fft_plot_path, bbox_inches='tight')
+            fft_plot_path = plot_fft_spectrum(
+                ch1_fft, ch2_fft, fft_freq, f1, f2, freq, date, CW_DIR
+            )
             filepaths.append(fft_plot_path)
-            plt.close()
 
     # add raw results to dataframe
     power_df["s31_raw"] = s31_raw_list
@@ -326,10 +426,10 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
         power_df['beta'] = power_df['beta'].astype(complex)
         power_df['GPM'] = power_df['GPM'].astype(complex)
 
-        # mismatch correction factor (scalar)
+        # calculate mismatch correction factor (scalar)
         mismatch_factor = np.sqrt(1 - np.abs(power_df['GPM'])**2)
 
-        # apply correction using complex division
+        # apply alpha/beta correction using complex division
         power_df["s31_corrected"] = (power_df["s31_raw"] / power_df["alpha"]) * mismatch_factor
         power_df["s46_corrected"] = (power_df["s46_raw"] / power_df["beta"]) * mismatch_factor
     else:
@@ -351,66 +451,27 @@ def CW_main(date:str=CW_DATE, **kwargs) -> list[str]:
     print(f"Ch1 Gain: mean = {power_df['ch1_gain'].mean():.2f} dB, median = {power_df['ch1_gain'].median():.2f} dB")
     print(f"Ch2 Gain: mean = {power_df['ch2_gain'].mean():.2f} dB, median = {power_df['ch2_gain'].median():.2f} dB")
 
-    # save the updated dataframe
-    # filepaths.append(os.path.join(CW_DIR, f"Processed_CW_{date}.csv"))
-    # power_df.to_csv(filepaths[-1], index=False)
-    
-    # ---------------------- Graphing All --------------------
-
     # calculate final output power for plotting
     power_df['ch1_power_out_dbm'] = power_df['ch1_gain'] + power_df['Power(dBm)']
     power_df['ch2_power_out_dbm'] = power_df['ch2_gain'] + power_df['Power(dBm)']
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(power_df["ch1_real_freq"] / 1e9, power_df["ch1_power_out_dbm"], '-o', label='Ch1 Power Out (Corrected)', color=COLORS[0], alpha=.7)
-    plt.plot(power_df["ch2_real_freq"] / 1e9, power_df["ch2_power_out_dbm"], '-o', label='Ch2 Power Out (Corrected)', color=COLORS[1], alpha=.7)
+    # generate plots
+    power_plot_path = plot_power_results(power_df, date, CW_DIR)
+    filepaths.append(power_plot_path)
     
-    plt.plot(power_df["Frequency"], power_df["Power(dBm)"], '-', label='Power In', color='red')
-    if "power_norminal" in power_df.columns:
-        plt.plot(power_df["Frequency"], power_df["power_norminal"], '--', label='Nominal Power In', color='red', alpha=0.5)
+    gain_phase_plot_path = plot_gain_phase_results(power_df, date, CW_DIR)
+    filepaths.append(gain_phase_plot_path)
 
-    plt.title("Corrected Output Power from CW Measurement")
-    plt.xlabel("Frequency (GHz)")
-    plt.ylabel("Power (dBm)")
-    plt.legend()
-    plt.tight_layout()
-    filepaths.append(os.path.join(CW_DIR, f"CW_Power_{date}.png"))
-    plt.savefig(filepaths[-1], bbox_inches='tight')
-    plt.close()
-
-    # ---------------------- Graph Gain and Phase Difference --------------------
-    plt.figure(figsize=(10, 5))
-    ax1 = plt.gca()
-    ax2 = ax1.twinx()
-
-    # plot gain
-    ax1.plot(power_df["ch1_real_freq"] / 1e9, power_df["ch1_gain"], '-', color=COLORS[0], label='Ch1 Gain')
-    ax1.plot(power_df["ch2_real_freq"] / 1e9, power_df["ch2_gain"], '-', color=COLORS[1], label='Ch2 Gain')
-    ax1.set_xlabel("Frequency (GHz)")
-    ax1.set_ylabel("Gain (dB)")
-    ax1.legend(loc="lower left")
-
-    # plot phase difference (convert to degrees)
-    phase_diff_deg = np.degrees(np.unwrap(power_df["phase_diff"].dropna()))
-    ax2.plot(power_df["ch1_real_freq"].dropna() / 1e9, phase_diff_deg, '-', color=COLORS[3], label='Phase Difference')
-    ax2.set_ylabel("Phase Difference (degrees)")
-    ax2.legend(loc="upper right")
-
-    plt.title("Gain and Phase Difference vs Frequency")
-    plt.tight_layout()
-    filepaths.append(os.path.join(CW_DIR, f"CW_Gain_Phase_{date}.png"))
-    plt.savefig(filepaths[-1], bbox_inches='tight')
-    plt.close()
-
-    # ---------------------- Create Complex Gain CSV ----------------------
+    # create complex S-parameter results CSV
     complex_gain_df = pd.DataFrame({
-        'Frequency': power_df['Frequency'], # Frequency in GHz
+        'Frequency': power_df['Frequency'],  # Frequency in GHz
         'S31': power_df['s31_corrected'],
         'S46': power_df['s46_corrected'],
     })
 
-    filepaths.append(os.path.join(CW_DIR, f"Processed_CW_{date}.csv"))
-    complex_gain_df.to_csv(filepaths[-1], index=False)
+    csv_output_path = os.path.join(CW_DIR, f"Processed_CW_{date}.csv")
+    complex_gain_df.to_csv(csv_output_path, index=False)
+    filepaths.append(csv_output_path)
 
     return filepaths
 

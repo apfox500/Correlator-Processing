@@ -5,9 +5,9 @@ from datetime import datetime
 
 from Constants import *
 from CW import CW_main
-from ND import noise_main
 from DUT import dut_main
 from LoadCal import loadcal_main
+from ND import noise_main
 from utils import print_fps
 
 def create_run_summary(module_name, date, filepaths, **kwargs):
