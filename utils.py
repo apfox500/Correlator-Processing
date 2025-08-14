@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 from Constants import *
 
 
-def process_noise_data(data_file_base:str, num_samples_test:int=NUM_TRACES, **kwargs) -> tuple[
+def process_noise_data(data_file_base:str, num_traces:int=NUM_TRACES, **kwargs) -> tuple[
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)],
     Annotated[NDArray[np.complex128], (DATASET_LENGTH,)]
@@ -23,7 +23,7 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_TRACES, **kw
 
     Parameters:
         data_file_base: The base string for the noise data filepaths (without index and .npy).
-        num_samples_test: Number of samples/files to process.
+        num_traces: Number of samples/files to process.
         **kwargs: Additional keyword arguments for processing options.
 
     Returns:
@@ -38,7 +38,7 @@ def process_noise_data(data_file_base:str, num_samples_test:int=NUM_TRACES, **kw
 
     # -------------------- Process Noise Files and Chunks --------------------
     # loop over the specified number of files
-    for idx in tqdm(range(num_samples_test), desc="Processing Noise Files", unit="file", total=num_samples_test):
+    for idx in tqdm(range(num_traces), desc="Processing Files", unit="file", total=num_traces, colour='#808080'):
         filename = f"{data_file_base}_{idx}.npy"
         filepath = os.path.join(DATA_DIR, filename)
         if not os.path.exists(filepath):
@@ -218,7 +218,7 @@ def print_fps(filepaths):
     if filepaths is not None:
         print("Data saved to:")
         for fp in filepaths:
-            print(fp)
+            print(f"\033[34m{fp}\033[0m")  # Blue color
 
 def parse_complex(s):
     if pd.isna(s) or s == '':
