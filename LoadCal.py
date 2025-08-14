@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from Constants import *
-from utils import dB, dBm, parse_complex, process_noise_data
+from utils import dB, dBm, parse_complex, process_noise_data, linear
 
 def load_gain_data(gain_file, gain_headers, fft_freq):
     """
@@ -261,11 +261,11 @@ def loadcal_main(date: str = LOAD_DATE, **kwargs) -> list[str]:
 
     # save results to CSV
     # convert gain-adjusted PSDs back to linear units (W/Hz) using safe conversion
-    cw_ch1_psd_gain_adj_linear = linear(cw_ch1_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
-    cw_ch2_psd_gain_adj_linear = linear(cw_ch2_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
-    nd_ch1_psd_gain_adj_linear = linear(nd_ch1_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
-    nd_ch2_psd_gain_adj_linear = linear(nd_ch2_psd_gain_adj) * 1e-3  # convert dBm/Hz to W/Hz
-    
+    cw_ch1_psd_gain_adj_linear = linear(np.abs(cw_ch1_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
+    cw_ch2_psd_gain_adj_linear = linear(np.abs(cw_ch2_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
+    nd_ch1_psd_gain_adj_linear = linear(np.abs(nd_ch1_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
+    nd_ch2_psd_gain_adj_linear = linear(np.abs(nd_ch2_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
+
     results_df = pd.DataFrame({
         'Freq': fft_freq / 1e9,
         'Ch1 PSD': ch1_avg_psd,

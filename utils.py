@@ -1,11 +1,12 @@
 import os
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 from tqdm import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
 
-from typing import Annotated, Union
+from typing import Annotated
+from typing import Union
 from numpy.typing import NDArray
 
 from Constants import *
@@ -223,11 +224,11 @@ def dBm(value: Union[float, NDArray]) -> Union[float, NDArray]:
         Union[float, NDArray]: Power value(s) in dBm. Returns -np.inf for elements ≤ 0.
         
     Notes:
-        - Uses formula: dBm = 10*log10(P_watts * 1000)
+        - Uses formula: dBm = 10*log10(P_watts / MW_TO_W)
         - Reference level is 1 milliwatt (1 mW = 0 dBm)
         - Commonly used for RF power measurements
     """
-    return 10 * np.log10(value * 1e3) if np.all(value > 0) else np.where(value > 0, 10 * np.log10(value * 1e3), -np.inf)
+    return 10 * np.log10(value / MW_TO_W) if np.all(value > 0) else np.where(value > 0, 10 * np.log10(value / MW_TO_W), -np.inf)
 
 def dbm(value: Union[float, NDArray]) -> Union[float, NDArray]:
     """

@@ -237,7 +237,7 @@ def create_run_summary(module_name, date, filepaths, **kwargs):
             f.write("- Calculates complete noise parameters including NF, T_min, gamma_opt\n")
             f.write("- Generates comparison plots between CW and ND methods\n")
     
-    print(f"Summary saved to: {summary_file}")
+    print(f"Summary saved to: \033[94m{summary_file}\033[0m")
     return summary_file
 
 # Functions to run each process with default parameters

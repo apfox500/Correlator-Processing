@@ -71,8 +71,14 @@ SAMPLE_CUTOFF = 30000
 MINIMUM_FREQUENCY = 1e9  # 1 GHz
 MAXIMUM_FREQUENCY = 2e9
 DATASET_LENGTH = math.floor(MAXIMUM_FREQUENCY * SAMPLE_CUTOFF / FS / 1e9) - math.ceil(MINIMUM_FREQUENCY * SAMPLE_CUTOFF / FS / 1e9) + 1
-NUM_TRACES = 500 # max 500
+NUM_TRACES = 30 # max 500
 COLORS = ["#223A64","#fa753c", "#ffda49", "#a9d574", "#3ca590", "#626c9d"]
 KB = 1.380649e-23  # Boltzmann constant in J/K
 T_AMB = 290 # Ambient temperature in K
 R_0 = 50  # Ohms
+
+# Logarithm and conversion constants
+LOG_MINIMUM = 1e-20  # Minimum value for logarithm calculations to avoid log(0)
+DBM_REFERENCE_DB = 30  # dBm to Watts conversion factor
+MW_TO_W = 1e-3  # Milliwatt to Watt conversion
+DEFAULT_INTERP_POINTS = 2001  # Default number of interpolation points

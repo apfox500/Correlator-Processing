@@ -25,7 +25,7 @@ def calculate_noise_gains(ch1_avg_psd, ch2_avg_psd, csd_avg, nd_psd_ref):
             - phase_diff (np.ndarray): Phase difference between channels in radians.
     """
     # protect against division by zero or very small values
-    nd_psd_ref = np.where(nd_psd_ref > 1e-20, nd_psd_ref, 1e-20)
+    nd_psd_ref = np.where(nd_psd_ref > LOG_MINIMUM, nd_psd_ref, LOG_MINIMUM)
     
     # calculate power gains (PSD in V²/Hz converted to W/Hz by dividing by R_0)
     ch1_power_gain = (ch1_avg_psd / R_0) / nd_psd_ref
@@ -40,8 +40,8 @@ def calculate_noise_gains(ch1_avg_psd, ch2_avg_psd, csd_avg, nd_psd_ref):
     
     # convert power gains to voltage-equivalent gains
     # power gain = |S|², so voltage gain magnitude = sqrt(power_gain)
-    ch1_power_gain = np.maximum(ch1_power_gain, 1e-20)  # ensure positive values
-    ch2_power_gain = np.maximum(ch2_power_gain, 1e-20)  # ensure positive values
+    ch1_power_gain = np.maximum(ch1_power_gain, LOG_MINIMUM)  # ensure positive values
+    ch2_power_gain = np.maximum(ch2_power_gain, LOG_MINIMUM)  # ensure positive values
     
     ch1_gain_mag = np.sqrt(ch1_power_gain)
     ch2_gain_mag = np.sqrt(ch2_power_gain)

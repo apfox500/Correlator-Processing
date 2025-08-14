@@ -23,8 +23,8 @@ def fft_to_dbm(fft_array, n_samples, impedance):
     v_peak = (np.abs(fft_array) / n_samples) * 2
     v_rms = v_peak / np.sqrt(2)
     power_watts = (v_rms**2) / impedance
-    power_watts[power_watts < 1e-20] = 1e-20  # avoid log(0)
-    return 10 * np.log10(power_watts) + 30
+    power_watts[power_watts < LOG_MINIMUM] = LOG_MINIMUM  # avoid log(0)
+    return 10 * np.log10(power_watts) + DBM_REFERENCE_DB
 
 def plot_fft_spectrum(ch1_fft, ch2_fft, fft_freq, ch1_real_freq, ch2_real_freq, freq, date, output_dir):
     """
@@ -197,7 +197,7 @@ def process_CWdata(ch1_data, ch2_data, input_power_dbm, freq, **kwargs):
 
     # --- Complex S-Parameter Calculation ---
     # calculate the incident wave 'a' from input power
-    power_watts = 10**((input_power_dbm - 30) / 10)
+    power_watts = 10**((input_power_dbm - DBM_REFERENCE_DB) / 10)
     a_in = np.sqrt(power_watts)  # assume phase is 0
 
     # calculate the outgoing wave 'b' from the measured FFT voltage
@@ -227,7 +227,7 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
     Parameters:
         power_df: The power dataframe containing frequency and power measurements.
         **kwargs: Additional keyword arguments for file paths and processing options.
-            n_points: Number of points for frequency axis (default is 2001).
+            n_points: Number of points for frequency axis (default is DEFAULT_INTERP_POINTS).
             file1, file2, file3, file4, file5, file6: Paths to S-parameter files.
 
     Returns:
@@ -235,7 +235,7 @@ def alphabeta_correction(power_df: pd.DataFrame, **kwargs) -> tuple[pd.DataFrame
     """
     try:
         # define a common frequency axis for all S-parameters
-        n_points = kwargs.get("n_points", 2001)
+        n_points = kwargs.get("n_points", DEFAULT_INTERP_POINTS)
         freq_axis_ghz = np.linspace(1, 2, n_points, dtype=float)
         common_freq = rf.Frequency.from_f(freq_axis_ghz, unit='GHz')
 
