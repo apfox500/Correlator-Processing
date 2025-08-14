@@ -60,8 +60,8 @@ def plot_psd_before_gain(fft_freq, ch1_avg_psd_dbm, ch2_avg_psd_dbm, date, outpu
         str: Path to the saved plot file.
     """
     plt.figure(figsize=(8, 5))
-    plt.plot(fft_freq / 1e9, ch1_avg_psd_dbm, label='Ch1 PSD', color=COLORS[0])
-    plt.plot(fft_freq / 1e9, ch2_avg_psd_dbm, label='Ch2 PSD', color=COLORS[1])
+    plt.plot(fft_freq / 1e9, np.real(ch1_avg_psd_dbm), label='Ch1 PSD', color=COLORS[0])
+    plt.plot(fft_freq / 1e9, np.real(ch2_avg_psd_dbm), label='Ch2 PSD', color=COLORS[1])
     plt.xlabel('Frequency (GHz)')
     plt.ylabel('PSD (dBm/Hz)')
     plt.title('Load Calibration: PSDs Before Gain Subtraction')
@@ -129,8 +129,8 @@ def plot_gain_adjusted_results(fft_freq, cw_ch1_psd_adj, cw_ch2_psd_adj, cw_phas
     # plot CW-adjusted PSDs
     ax1.set_xlabel('Frequency (GHz)')
     ax1.set_ylabel('PSD (dBm/Hz)')
-    ax1.plot(fft_freq / 1e9, cw_ch1_psd_adj, label='CW Ch1 PSD', color=COLORS[0])
-    ax1.plot(fft_freq / 1e9, cw_ch2_psd_adj, label='CW Ch2 PSD', color=COLORS[1])
+    ax1.plot(fft_freq / 1e9, np.real(cw_ch1_psd_adj), label='CW Ch1 PSD', color=COLORS[0])
+    ax1.plot(fft_freq / 1e9, np.real(cw_ch2_psd_adj), label='CW Ch2 PSD', color=COLORS[1])
     ax1.set_title('CW Gain-Adjusted PSDs')
     ax1.legend()
 
@@ -144,8 +144,8 @@ def plot_gain_adjusted_results(fft_freq, cw_ch1_psd_adj, cw_ch2_psd_adj, cw_phas
     # plot ND-adjusted PSDs
     ax3.set_xlabel('Frequency (GHz)')
     ax3.set_ylabel('PSD (dBm/Hz)')
-    ax3.plot(fft_freq / 1e9, nd_ch1_psd_adj, label='ND Ch1 PSD', color=COLORS[0])
-    ax3.plot(fft_freq / 1e9, nd_ch2_psd_adj, label='ND Ch2 PSD', color=COLORS[1])
+    ax3.plot(fft_freq / 1e9, np.real(nd_ch1_psd_adj), label='ND Ch1 PSD', color=COLORS[0])
+    ax3.plot(fft_freq / 1e9, np.real(nd_ch2_psd_adj), label='ND Ch2 PSD', color=COLORS[1])
     ax3.set_title('ND Gain-Adjusted PSDs')
     ax3.legend()
 
@@ -261,10 +261,10 @@ def loadcal_main(date: str = LOAD_DATE, **kwargs) -> list[str]:
 
     # save results to CSV
     # convert gain-adjusted PSDs back to linear units (W/Hz) using safe conversion
-    cw_ch1_psd_gain_adj_linear = linear(np.abs(cw_ch1_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
-    cw_ch2_psd_gain_adj_linear = linear(np.abs(cw_ch2_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
-    nd_ch1_psd_gain_adj_linear = linear(np.abs(nd_ch1_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
-    nd_ch2_psd_gain_adj_linear = linear(np.abs(nd_ch2_psd_gain_adj)) * 1e-3  # convert dBm/Hz to W/Hz
+    cw_ch1_psd_gain_adj_linear = np.real(linear(np.abs(cw_ch1_psd_gain_adj)) * 1e-3)  # convert dBm/Hz to W/Hz
+    cw_ch2_psd_gain_adj_linear = np.real(linear(np.abs(cw_ch2_psd_gain_adj)) * 1e-3)  # convert dBm/Hz to W/Hz
+    nd_ch1_psd_gain_adj_linear = np.real(linear(np.abs(nd_ch1_psd_gain_adj)) * 1e-3)  # convert dBm/Hz to W/Hz
+    nd_ch2_psd_gain_adj_linear = np.real(linear(np.abs(nd_ch2_psd_gain_adj)) * 1e-3)  # convert dBm/Hz to W/Hz
 
     results_df = pd.DataFrame({
         'Freq': fft_freq / 1e9,
