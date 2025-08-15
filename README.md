@@ -1,6 +1,6 @@
 # Correlator Processing
 
-This repository provides tools for processing and analyzing data from the correlator instrument for measurement of low noise amplifiers and transistors. The correlator instrument measures voltage signals from two channels to characterize noise properties and gain parameters of RF devices. This software processes the raw correlator data through several calibration and analysis stages to extract meaningful gain and noise figure measurements. For a detailed overview of the mathematical processing involved, see [MATHEMATICAL_PROCESSING.md](MATHEMATICAL_PROCESSING.md).
+This repository provides tools for processing and analyzing data from the correlator instrument for measurement of low noise amplifiers and transistors. The correlator instrument measures voltage signals from two channels to characterize noise properties and gain parameters of RF devices. This software processes the raw correlator data through several calibration and analysis stages to extract meaningful gain and noise figure measurements. For a detailed overview of the mathematical processing involved, see [math.md](math.md).
 
 ![Full FTR](media/Full_FTR.png)
 
