@@ -4,7 +4,9 @@
 
 The CW processing module analyzes known continuous wave signals to determine complex channel gains and phase relationships. The mathematical process follows these key steps:
 
-![CW Measurement Setup](media/Cw_Tone_cal_v2.png)
+<div align="center">
+<img src="media/Cw_Tone_cal_v2.png" alt="CW Measurement Setup" width="50%">
+</div>
 
 ### 1. ADC Voltage Conversion and FFT Analysis
 
@@ -74,7 +76,9 @@ The result is a frequency-dependent characterization of both channels' complex t
 
 The ND processing module uses calibrated noise sources to determine power-based channel gains and phase relationships. This approach provides an alternative gain calibration method that complements the CW measurements. The mathematical process follows these key steps:
 
-![ND Measurement Setup](media/Noise_Signal_Cal_v2.png)
+<div align="center">
+<img src="media/Noise_Signal_Cal_v2.png" alt="ND Measurement Setup" width="50%">
+</div>
 
 ### 1. ADC Voltage Conversion and PSD Analysis
 
@@ -144,7 +148,9 @@ This convention preserves the relative phase difference while providing symmetri
 
 The Load Calibration module characterizes the system's inherent noise properties using 50-ohm terminations. This calibration provides a reference baseline by measuring the noise floor of the measurement system itself, which is essential for accurate noise figure calculations in subsequent DUT analysis. The mathematical process follows these key steps:
 
-![Load Calibration Setup](media/Load_Cal_v2.png)
+<div align="center">
+<img src="media/Load_Cal_v2.png" alt="Load Calibration Setup" width="50%">
+</div>
 
 ### 1. Load Measurement and PSD Analysis
 
@@ -218,7 +224,9 @@ $$\Delta\phi_{\text{corrected}} = \Delta\phi_{\text{measured}} - \Delta\phi_{\te
 
 The DUT analysis module performs comprehensive noise parameter extraction by combining all previous calibrations to characterize the noise properties of the device under test. This is the most complex processing stage, involving X-parameter calculations, noise parameter derivation, and final noise figure determination. The mathematical process follows these key steps:
 
-![DUT Measurement Setup](media/correlator_v2.png)
+<div align="center">
+<img src="media/correlator_v2.png" alt="DUT Measurement Setup" width="50%">
+</div>
 
 ### 1. Data Integration and Parameter Loading
 

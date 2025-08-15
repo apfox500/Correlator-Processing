@@ -24,7 +24,7 @@ git clone https://github.com/apfox500/Correlator-Processing.git
 cd "Correlator Processing"
 ```
 
-### 2. Set Up Anaconda Environment
+### 2. Set Up Conda Environment
 
 The recommended approach is to use the provided `environment.yml` file with Anaconda or Miniconda:
 
